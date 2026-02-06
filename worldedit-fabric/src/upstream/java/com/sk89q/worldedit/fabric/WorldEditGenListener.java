@@ -17,27 +17,34 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-package com.sk89q.worldedit.fabric.internal;
+package com.sk89q.worldedit.fabric;
 
-import com.sk89q.worldedit.util.SideEffect;
-import net.minecraft.core.BlockPos;
-import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.level.chunk.ChunkAccess;
+import net.fabricmc.api.EnvType;
+import net.fabricmc.api.Environment;
+import net.minecraft.server.level.progress.ChunkProgressListener;
+import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.level.chunk.status.ChunkStatus;
 
 import javax.annotation.Nullable;
 
-public interface ExtendedChunk {
-    /**
-     * {@link ChunkAccess#setBlockState(BlockPos, BlockState, boolean)} with the extra
-     * {@link SideEffect#UPDATE} flag.
-     *
-     * @param pos the position to set
-     * @param state the state to set
-     * @param moved I honestly have no idea and can't be bothered to investigate, we pass {@code
-     *     false}
-     * @param update the update flag, see side-effect for details
-     * @return the old block state, or {@code null} if unchanged
-     */
-    @Nullable
-    BlockState setBlockState(BlockPos pos, BlockState state, boolean moved, boolean update);
+// For now, this does nothing, but might be useful later for regen progress communication.
+class WorldEditGenListener implements ChunkProgressListener {
+
+    @Environment(EnvType.CLIENT)
+    @Override
+    public void start() {
+    }
+
+    @Override
+    public void updateSpawnPos(ChunkPos spawnPos) {
+    }
+
+    @Override
+    public void onStatusChange(ChunkPos pos, @Nullable ChunkStatus status) {
+    }
+
+    @Override
+    public void stop() {
+    }
+
 }

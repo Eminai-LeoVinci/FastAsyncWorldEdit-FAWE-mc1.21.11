@@ -8,12 +8,12 @@ gson = "2.11.0"
 snakeyaml = "2.2"
 
 # Fabric
-fabric-api = "0.141.1+1.21.11"
+fabric-api = "0.116.8+1.21.1"
 fabric-loader = "0.18.4"
-fabric-minecraft = "1.21.11"
+fabric-minecraft = "1.21.1"
 fabric-permissions-api = "0.6.1"
-parchment-minecraft = "1.21.10"
-parchment-mappings = "2025.10.12"
+parchment-minecraft = "1.21.1"
+parchment-mappings = "2024.11.17"
 
 # Plugins
 dummypermscompat = "1.10"
@@ -47,7 +47,7 @@ vault = "1.7.1"
 serverlib = "2.3.7"
 linbus = "0.2.0"
 autoService = "1.1.1"
-cuiProtocol = "4.0.2"
+cuiProtocol = "4.0.0"
 errorprone = "2.45.0"
 
 ## Internal
@@ -133,7 +133,7 @@ errorprone-annotations = { group = "com.google.errorprone", name = "error_prone_
 
 autoService = { group = "com.google.auto.service", name = "auto-service", version.ref = "autoService" }
 
-cuiProtocol-fabric = { group = "org.enginehub.worldeditcui-protocol", name = "worldeditcui-protocol-fabric-mc1.21.11", version.ref = "cuiProtocol" }
+cuiProtocol-fabric = { group = "org.enginehub.worldeditcui-protocol", name = "worldeditcui-protocol-fabric-mc1.21.1", version.ref = "cuiProtocol" }
 
 linBus-bom = { group = "org.enginehub.lin-bus", name = "lin-bus-bom", version.ref = "linbus" }
 linBus-common = { group = "org.enginehub.lin-bus", name = "lin-bus-common" }
@@ -188,3 +188,5 @@ version.ref = "piston"
 pluginyml = { id = "net.minecrell.plugin-yml.bukkit", version.ref = "pluginyml" }
 mod-publish-plugin = { id = "me.modmuss50.mod-publish-plugin", version.ref = "mod-publish-plugin" }
 codecov = { id = "org.enginehub.codecov", version.ref = "codecov" }
+
+

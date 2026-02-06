@@ -21,7 +21,6 @@ package com.sk89q.worldedit.fabric;
 
 import com.sk89q.worldedit.WorldEdit;
 import com.sk89q.worldedit.extension.platform.AbstractCommandBlockActor;
-import com.sk89q.worldedit.fabric.internal.ComponentConverter;
 import com.sk89q.worldedit.session.SessionKey;
 import com.sk89q.worldedit.util.Location;
 import com.sk89q.worldedit.util.auth.AuthorizationException;
@@ -31,33 +30,24 @@ import com.sk89q.worldedit.util.formatting.text.serializer.gson.GsonComponentSer
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.SectionPos;
-import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.BaseCommandBlock;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
-import net.minecraft.world.phys.Vec3;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Locale;
-import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 
 import static com.google.common.base.Preconditions.checkNotNull;
 
 public class FabricBlockCommandSender extends AbstractCommandBlockActor {
     private final BaseCommandBlock sender;
     private final UUID uuid;
-    private final ServerLevel level;
-    private final Vec3 pos;
-    private final Map<String, Boolean> permissionOverrides = new ConcurrentHashMap<>();
 
-    public FabricBlockCommandSender(BaseCommandBlock sender, ServerLevel level, Vec3 pos) {
-        super(new Location(FabricAdapter.adapt(checkNotNull(level)), FabricAdapter.adapt(checkNotNull(pos))));
+    public FabricBlockCommandSender(BaseCommandBlock sender) {
+        super(new Location(FabricAdapter.adapt(checkNotNull(sender).getLevel()), FabricAdapter.adapt(sender.getPosition())));
 
         this.sender = sender;
-        this.level = level;
-        this.pos = pos;
         this.uuid = UUID.nameUUIDFromBytes((UUID_PREFIX + sender.getName()).getBytes(StandardCharsets.UTF_8));
     }
 
@@ -69,7 +59,7 @@ public class FabricBlockCommandSender extends AbstractCommandBlockActor {
     @Override
     @Deprecated
     public void printRaw(String msg) {
-        for (String part : msg.split("\n", 0)) {
+        for (String part : msg.split("\n")) {
             sendMessage(net.minecraft.network.chat.Component.literal(part));
         }
     }
@@ -94,14 +84,14 @@ public class FabricBlockCommandSender extends AbstractCommandBlockActor {
 
     @Override
     public void print(Component component) {
-        sendMessage(ComponentConverter.Serializer.fromJson(
+        sendMessage(net.minecraft.network.chat.Component.Serializer.fromJson(
             GsonComponentSerializer.INSTANCE.serialize(WorldEditText.format(component, getLocale())),
-            this.level.registryAccess()
+            this.sender.getLevel().registryAccess()
         ));
     }
 
     private void sendColorized(String msg, ChatFormatting formatting) {
-        for (String part : msg.split("\n", 0)) {
+        for (String part : msg.split("\n")) {
             var component = net.minecraft.network.chat.Component.literal(part);
             component.withStyle(formatting);
             sendMessage(component);
@@ -109,7 +99,7 @@ public class FabricBlockCommandSender extends AbstractCommandBlockActor {
     }
 
     private void sendMessage(net.minecraft.network.chat.Component textComponent) {
-        this.sender.setLastOutput(textComponent);
+        this.sender.sendSystemMessage(textComponent);
     }
 
     @Override
@@ -136,13 +126,11 @@ public class FabricBlockCommandSender extends AbstractCommandBlockActor {
 
     @Override
     public boolean hasPermission(String permission) {
-        Boolean override = permissionOverrides.get(permission);
-        return override != null ? override : true;
+        return true;
     }
 
     @Override
     public void setPermission(String permission, boolean value) {
-        permissionOverrides.put(permission, value);
     }
 
     public BaseCommandBlock getSender() {
@@ -156,14 +144,14 @@ public class FabricBlockCommandSender extends AbstractCommandBlockActor {
             private volatile boolean active = true;
 
             private void updateActive() {
-                BlockPos blockPos = new BlockPos((int) pos.x, (int) pos.y, (int) pos.z);
-                int chunkX = SectionPos.blockToSectionCoord(blockPos.getX());
-                int chunkZ = SectionPos.blockToSectionCoord(blockPos.getZ());
-                if (!level.getChunkSource().hasChunk(chunkX, chunkZ)) {
+                BlockPos pos = new BlockPos((int) sender.getPosition().x, (int) sender.getPosition().y, (int) sender.getPosition().z);
+                int chunkX = SectionPos.blockToSectionCoord(pos.getX());
+                int chunkZ = SectionPos.blockToSectionCoord(pos.getZ());
+                if (!sender.getLevel().getChunkSource().hasChunk(chunkX, chunkZ)) {
                     active = false;
                     return;
                 }
-                Block type = level.getBlockState(blockPos).getBlock();
+                Block type = sender.getLevel().getBlockState(pos).getBlock();
                 active = type == Blocks.COMMAND_BLOCK
                     || type == Blocks.CHAIN_COMMAND_BLOCK
                     || type == Blocks.REPEATING_COMMAND_BLOCK;
@@ -176,7 +164,7 @@ public class FabricBlockCommandSender extends AbstractCommandBlockActor {
 
             @Override
             public boolean isActive() {
-                level.getServer().execute(this::updateActive);
+                getSender().getLevel().getServer().execute(this::updateActive);
                 return active;
             }
 

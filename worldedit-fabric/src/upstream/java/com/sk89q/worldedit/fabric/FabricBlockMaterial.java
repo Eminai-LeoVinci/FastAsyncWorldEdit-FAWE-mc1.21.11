@@ -19,15 +19,11 @@
 
 package com.sk89q.worldedit.fabric;
 
-import com.fastasyncworldedit.core.nbt.FaweCompoundTag;
 import com.sk89q.worldedit.world.registry.BlockMaterial;
-import net.minecraft.core.BlockPos;
-import net.minecraft.world.Clearable;
-import net.minecraft.world.level.EmptyBlockGetter;
-import net.minecraft.world.level.block.Block;
-import net.minecraft.world.level.block.EntityBlock;
+import com.sk89q.worldedit.world.registry.PassthroughBlockMaterial;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.material.PushReaction;
+
 import javax.annotation.Nullable;
 
 /**
@@ -35,32 +31,23 @@ import javax.annotation.Nullable;
  * Material, and passes the rest to another implementation, typically the
  * bundled block info.
  */
-public class FabricBlockMaterial implements BlockMaterial {
+public class FabricBlockMaterial extends PassthroughBlockMaterial {
 
     private final BlockState block;
 
-    public FabricBlockMaterial(BlockState block) {
+    public FabricBlockMaterial(BlockState block, @Nullable BlockMaterial secondary) {
+        super(secondary);
         this.block = block;
     }
 
     @Override
     public boolean isAir() {
-        return block.isAir();
-    }
-
-    @Override
-    public boolean isFullCube() {
-        return Block.isShapeFullBlock(block.getShape(EmptyBlockGetter.INSTANCE, BlockPos.ZERO));
+        return block.isAir() || super.isAir();
     }
 
     @Override
     public boolean isOpaque() {
         return block.canOcclude();
-    }
-
-    @Override
-    public boolean isPowerSource() {
-        return block.isSignalSource();
     }
 
     @Override
@@ -76,31 +63,6 @@ public class FabricBlockMaterial implements BlockMaterial {
     }
 
     @Override
-    public float getHardness() {
-        return block.getDestroySpeed(EmptyBlockGetter.INSTANCE, BlockPos.ZERO);
-    }
-
-    @Override
-    public float getResistance() {
-        return block.getBlock().getExplosionResistance();
-    }
-
-    @Override
-    public float getSlipperiness() {
-        return block.getBlock().getFriction();
-    }
-
-    @Override
-    public int getLightValue() {
-        return block.getLightEmission();
-    }
-
-    @Override
-    public int getLightOpacity() {
-        return block.getLightBlock();
-    }
-
-    @Override
     public boolean isFragileWhenPushed() {
         return block.getPistonPushReaction() == PushReaction.DESTROY;
     }
@@ -108,11 +70,6 @@ public class FabricBlockMaterial implements BlockMaterial {
     @Override
     public boolean isUnpushable() {
         return block.getPistonPushReaction() == PushReaction.BLOCK;
-    }
-
-    @Override
-    public boolean isTicksRandomly() {
-        return block.isRandomlyTicking();
     }
 
     @Override
@@ -134,33 +91,6 @@ public class FabricBlockMaterial implements BlockMaterial {
     @Override
     public boolean isReplacedDuringPlacement() {
         return block.canBeReplaced();
-    }
-
-    @Override
-    public boolean isTranslucent() {
-        return !block.canOcclude();
-    }
-
-    @Override
-    public boolean hasContainer() {
-        return block.getBlock() instanceof EntityBlock entityBlock
-                && entityBlock.newBlockEntity(BlockPos.ZERO, block) instanceof Clearable;
-    }
-
-    @Override
-    public boolean isTile() {
-        return block.hasBlockEntity();
-    }
-
-    @Nullable
-    @Override
-    public FaweCompoundTag defaultTile() {
-        return null;
-    }
-
-    @Override
-    public int getMapColor() {
-        return block.getBlock().defaultMapColor().col;
     }
 
 }

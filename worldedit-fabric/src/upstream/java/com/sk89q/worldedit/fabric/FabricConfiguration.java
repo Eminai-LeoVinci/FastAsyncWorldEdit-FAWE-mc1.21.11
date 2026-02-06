@@ -34,7 +34,6 @@ public class FabricConfiguration extends PropertiesConfiguration {
 
     @Override
     protected void loadExtra() {
-        // Keep permissions secure by default, even in development runs.
         creativeEnable = getBool("use-in-creative", false);
         cheatMode = getBool("cheat-mode", false);
     }

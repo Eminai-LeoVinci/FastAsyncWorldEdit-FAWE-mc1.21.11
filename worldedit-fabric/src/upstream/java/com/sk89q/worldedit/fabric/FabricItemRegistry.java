@@ -20,14 +20,11 @@
 package com.sk89q.worldedit.fabric;
 
 import com.sk89q.worldedit.blocks.BaseItemStack;
-import com.sk89q.worldedit.fabric.internal.ComponentConverter;
 import com.sk89q.worldedit.util.formatting.text.Component;
 import com.sk89q.worldedit.util.formatting.text.TranslatableComponent;
-import com.sk89q.worldedit.util.formatting.text.serializer.gson.GsonComponentSerializer;
 import com.sk89q.worldedit.world.item.ItemType;
 import com.sk89q.worldedit.world.registry.BundledItemRegistry;
 
-@SuppressWarnings("removal")
 public class FabricItemRegistry extends BundledItemRegistry {
 
     @Override
@@ -39,11 +36,8 @@ public class FabricItemRegistry extends BundledItemRegistry {
 
     @Override
     public Component getRichName(BaseItemStack itemStack) {
-        return GsonComponentSerializer.INSTANCE.deserialize(
-            ComponentConverter.Serializer.toJson(
-                FabricAdapter.adapt(itemStack).getItemName(),
-                FabricWorldEdit.LIFECYCLED_SERVER.valueOrThrow().registryAccess()
-            )
+        return TranslatableComponent.of(
+            FabricAdapter.adapt(itemStack).getDescriptionId()
         );
     }
 

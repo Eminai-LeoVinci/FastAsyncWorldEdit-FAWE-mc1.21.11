@@ -21,7 +21,6 @@ package com.sk89q.worldedit.fabric;
 
 import com.sk89q.worldedit.WorldEdit;
 import com.sk89q.worldedit.extension.platform.AbstractNonPlayerActor;
-import com.sk89q.worldedit.fabric.internal.ComponentConverter;
 import com.sk89q.worldedit.session.SessionKey;
 import com.sk89q.worldedit.util.formatting.WorldEditText;
 import com.sk89q.worldedit.util.formatting.text.Component;
@@ -30,9 +29,7 @@ import net.minecraft.ChatFormatting;
 import net.minecraft.commands.CommandSourceStack;
 
 import java.util.Locale;
-import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 import javax.annotation.Nullable;
 
 import static com.google.common.base.Preconditions.checkArgument;
@@ -46,7 +43,6 @@ public class FabricCommandSender extends AbstractNonPlayerActor {
     private static final UUID DEFAULT_ID = UUID.fromString("a233eb4b-4cab-42cd-9fd9-7e7b9a3f74be");
 
     private final CommandSourceStack sender;
-    private final Map<String, Boolean> permissionOverrides = new ConcurrentHashMap<>();
 
     public FabricCommandSender(CommandSourceStack sender) {
         checkNotNull(sender);
@@ -68,7 +64,7 @@ public class FabricCommandSender extends AbstractNonPlayerActor {
     @Override
     @Deprecated
     public void printRaw(String msg) {
-        for (String part : msg.split("\n", 0)) {
+        for (String part : msg.split("\n")) {
             sendMessage(net.minecraft.network.chat.Component.literal(part));
         }
     }
@@ -93,14 +89,14 @@ public class FabricCommandSender extends AbstractNonPlayerActor {
 
     @Override
     public void print(Component component) {
-        sendMessage(ComponentConverter.Serializer.fromJson(
+        sendMessage(net.minecraft.network.chat.Component.Serializer.fromJson(
             GsonComponentSerializer.INSTANCE.serialize(WorldEditText.format(component, getLocale())),
             this.sender.registryAccess()
         ));
     }
 
     private void sendColorized(String msg, ChatFormatting formatting) {
-        for (String part : msg.split("\n", 0)) {
+        for (String part : msg.split("\n")) {
             var component = net.minecraft.network.chat.Component.literal(part);
             component.withStyle(formatting);
             sendMessage(component);
@@ -118,13 +114,11 @@ public class FabricCommandSender extends AbstractNonPlayerActor {
 
     @Override
     public boolean hasPermission(String perm) {
-        Boolean override = permissionOverrides.get(perm);
-        return override != null ? override : true;
+        return true;
     }
 
     @Override
     public void setPermission(String permission, boolean value) {
-        permissionOverrides.put(permission, value);
     }
 
     @Override

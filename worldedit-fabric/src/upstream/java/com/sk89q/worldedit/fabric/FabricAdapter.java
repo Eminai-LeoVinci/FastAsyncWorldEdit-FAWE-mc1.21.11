@@ -41,14 +41,12 @@ import com.sk89q.worldedit.world.item.ItemType;
 import com.sk89q.worldedit.world.item.ItemTypes;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.RegistryAccess;
 import net.minecraft.core.component.DataComponentPatch;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtOps;
-import net.minecraft.resources.Identifier;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.util.ProblemReporter;
 import net.minecraft.util.StringRepresentable;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -56,7 +54,7 @@ import net.minecraft.world.level.BaseCommandBlock;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntity;
-import net.minecraft.world.level.storage.TagValueOutput;
+import net.minecraft.world.level.block.state.properties.DirectionProperty;
 import net.minecraft.world.phys.Vec3;
 import org.enginehub.linbus.tree.LinCompoundTag;
 
@@ -85,8 +83,8 @@ public final class FabricAdapter {
      */
     public static net.minecraft.world.level.Level adapt(World world) {
         checkNotNull(world);
-        if (world instanceof FabricWorld fabricWorld) {
-            return fabricWorld.getWorld();
+        if (world instanceof FabricWorld) {
+            return ((FabricWorld) world).getWorld();
         } else {
             // TODO introduce a better cross-platform world API to match more easily
             throw new UnsupportedOperationException("Cannot adapt from a " + world.getClass());
@@ -95,11 +93,11 @@ public final class FabricAdapter {
 
     public static Biome adapt(BiomeType biomeType) {
         return FabricWorldEdit.getRegistry(Registries.BIOME)
-            .getValue(Identifier.parse(biomeType.id()));
+            .get(ResourceLocation.parse(biomeType.id()));
     }
 
     public static BiomeType adapt(Biome biome) {
-        Identifier id = FabricWorldEdit.getRegistry(Registries.BIOME).getKey(biome);
+        ResourceLocation id = FabricWorldEdit.getRegistry(Registries.BIOME).getKey(biome);
         Objects.requireNonNull(id, "biome is not registered");
         return BiomeTypes.get(id.toString());
     }
@@ -117,28 +115,42 @@ public final class FabricAdapter {
     }
 
     public static net.minecraft.core.Direction adapt(Direction face) {
-        return switch (face) {
-            case NORTH -> net.minecraft.core.Direction.NORTH;
-            case SOUTH -> net.minecraft.core.Direction.SOUTH;
-            case WEST -> net.minecraft.core.Direction.WEST;
-            case EAST -> net.minecraft.core.Direction.EAST;
-            case DOWN -> net.minecraft.core.Direction.DOWN;
-            default -> net.minecraft.core.Direction.UP;
-        };
+        switch (face) {
+            case NORTH:
+                return net.minecraft.core.Direction.NORTH;
+            case SOUTH:
+                return net.minecraft.core.Direction.SOUTH;
+            case WEST:
+                return net.minecraft.core.Direction.WEST;
+            case EAST:
+                return net.minecraft.core.Direction.EAST;
+            case DOWN:
+                return net.minecraft.core.Direction.DOWN;
+            case UP:
+            default:
+                return net.minecraft.core.Direction.UP;
+        }
     }
 
     public static Direction adaptEnumFacing(@Nullable net.minecraft.core.Direction face) {
         if (face == null) {
             return null;
         }
-        return switch (face) {
-            case NORTH -> Direction.NORTH;
-            case SOUTH -> Direction.SOUTH;
-            case WEST -> Direction.WEST;
-            case EAST -> Direction.EAST;
-            case DOWN -> Direction.DOWN;
-            default -> Direction.UP;
-        };
+        switch (face) {
+            case NORTH:
+                return Direction.NORTH;
+            case SOUTH:
+                return Direction.SOUTH;
+            case WEST:
+                return Direction.WEST;
+            case EAST:
+                return Direction.EAST;
+            case DOWN:
+                return Direction.DOWN;
+            case UP:
+            default:
+                return Direction.UP;
+        }
     }
 
     public static BlockPos toBlockPos(BlockVector3 vector) {
@@ -150,8 +162,6 @@ public final class FabricAdapter {
      *
      * @deprecated without replacement, use the block adapter methods
      */
-    // Suppress InlineMeSuggester: There is no replacement, so this shouldn't be inlined
-    @SuppressWarnings("InlineMeSuggester")
     @Deprecated
     public static Property<?> adaptProperty(net.minecraft.world.level.block.state.properties.Property<?> property) {
         return FabricTransmogrifier.transmogToWorldEditProperty(property);
@@ -167,12 +177,10 @@ public final class FabricAdapter {
         Map<Property<?>, Object> props = new TreeMap<>(Comparator.comparing(Property::getName));
         for (Map.Entry<net.minecraft.world.level.block.state.properties.Property<?>, Comparable<?>> prop : mcProps.entrySet()) {
             Object value = prop.getValue();
-            if (prop.getKey() instanceof net.minecraft.world.level.block.state.properties.EnumProperty) {
-                if (prop.getKey().getValueClass() == net.minecraft.core.Direction.class) {
-                    value = adaptEnumFacing((net.minecraft.core.Direction) value);
-                } else {
-                    value = ((StringRepresentable) value).getSerializedName();
-                }
+            if (prop.getKey() instanceof DirectionProperty) {
+                value = adaptEnumFacing((net.minecraft.core.Direction) value);
+            } else if (prop.getKey() instanceof net.minecraft.world.level.block.state.properties.EnumProperty) {
+                value = ((StringRepresentable) value).getSerializedName();
             }
             props.put(block.getProperty(prop.getKey().getName()), value);
         }
@@ -180,33 +188,38 @@ public final class FabricAdapter {
     }
 
     public static net.minecraft.world.level.block.state.BlockState adapt(BlockState blockState) {
-        return FabricTransmogrifier.transmogToMinecraft(blockState);
+        int blockStateId = BlockStateIdAccess.getBlockStateId(blockState);
+        if (!BlockStateIdAccess.isValidInternalId(blockStateId)) {
+            return FabricTransmogrifier.transmogToMinecraft(blockState);
+        }
+        return Block.stateById(blockStateId);
     }
 
     public static BlockState adapt(net.minecraft.world.level.block.state.BlockState blockState) {
-        return FabricTransmogrifier.transmogToWorldEdit(blockState);
+        int blockStateId = Block.getId(blockState);
+        BlockState worldEdit = BlockStateIdAccess.getBlockStateById(blockStateId);
+        if (worldEdit == null) {
+            return FabricTransmogrifier.transmogToWorldEdit(blockState);
+        }
+        return worldEdit;
     }
 
     public static BaseBlock adapt(BlockEntity blockEntity) {
         if (!blockEntity.hasLevel()) {
             throw new IllegalArgumentException("BlockEntity must have a level");
         }
-        RegistryAccess registries = blockEntity.getLevel().registryAccess();
-        return adapt(blockEntity, registries);
-    }
-
-    public static BaseBlock adapt(BlockEntity blockEntity, RegistryAccess registries) {
-        BlockState worldEdit = FabricTransmogrifier.transmogToWorldEdit(blockEntity.getBlockState());
+        int blockStateId = Block.getId(blockEntity.getBlockState());
+        BlockState worldEdit = BlockStateIdAccess.getBlockStateById(blockStateId);
+        if (worldEdit == null) {
+            worldEdit = FabricTransmogrifier.transmogToWorldEdit(blockEntity.getBlockState());
+        }
         // Save this outside the reference to ensure it doesn't mutate
-        var tagValueOutput = TagValueOutput.createWithContext(ProblemReporter.DISCARDING, registries);
-        blockEntity.saveWithId(tagValueOutput);
-        net.minecraft.nbt.CompoundTag savedNative = tagValueOutput.buildResult();
-
+        CompoundTag savedNative = blockEntity.saveWithId(blockEntity.getLevel().registryAccess());
         return worldEdit.toBaseBlock(LazyReference.from(() -> NBTConverter.fromNative(savedNative)));
     }
 
     public static Block adapt(BlockType blockType) {
-        return FabricWorldEdit.getRegistry(Registries.BLOCK).getValue(Identifier.parse(blockType.id()));
+        return FabricWorldEdit.getRegistry(Registries.BLOCK).get(ResourceLocation.parse(blockType.id()));
     }
 
     public static BlockType adapt(Block block) {
@@ -214,7 +227,7 @@ public final class FabricAdapter {
     }
 
     public static Item adapt(ItemType itemType) {
-        return FabricWorldEdit.getRegistry(Registries.ITEM).getValue(Identifier.parse(itemType.id()));
+        return FabricWorldEdit.getRegistry(Registries.ITEM).get(ResourceLocation.parse(itemType.id()));
     }
 
     public static ItemType adapt(Item item) {
@@ -274,7 +287,7 @@ public final class FabricAdapter {
             return adaptPlayer(commandSourceStack.getPlayer());
         }
         if (FabricWorldEdit.inst.getConfig().commandBlockSupport && commandSourceStack.source instanceof BaseCommandBlock commandBlock) {
-            return new FabricBlockCommandSender(commandBlock, commandSourceStack.getLevel(), commandSourceStack.getPosition());
+            return new FabricBlockCommandSender(commandBlock);
         }
 
         return new FabricCommandSender(commandSourceStack);

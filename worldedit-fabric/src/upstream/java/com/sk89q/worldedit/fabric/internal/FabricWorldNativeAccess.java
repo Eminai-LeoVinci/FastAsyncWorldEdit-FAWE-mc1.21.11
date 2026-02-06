@@ -20,6 +20,7 @@
 package com.sk89q.worldedit.fabric.internal;
 
 import com.sk89q.worldedit.fabric.FabricAdapter;
+import com.sk89q.worldedit.internal.block.BlockStateIdAccess;
 import com.sk89q.worldedit.internal.wna.WorldNativeAccess;
 import com.sk89q.worldedit.util.SideEffect;
 import com.sk89q.worldedit.util.SideEffectSet;
@@ -27,13 +28,11 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.level.FullChunkStatus;
 import net.minecraft.server.level.ServerChunkCache;
-import net.minecraft.util.ProblemReporter;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.LevelChunk;
-import net.minecraft.world.level.storage.TagValueInput;
 import org.enginehub.linbus.tree.LinCompoundTag;
 
 import java.lang.ref.WeakReference;
@@ -67,7 +66,10 @@ public class FabricWorldNativeAccess implements WorldNativeAccess<LevelChunk, Bl
 
     @Override
     public BlockState toNative(com.sk89q.worldedit.world.block.BlockState state) {
-        return FabricAdapter.adapt(state);
+        int stateId = BlockStateIdAccess.getBlockStateId(state);
+        return BlockStateIdAccess.isValidInternalId(stateId)
+            ? Block.stateById(stateId)
+            : FabricAdapter.adapt(state);
     }
 
     @Override
@@ -78,12 +80,12 @@ public class FabricWorldNativeAccess implements WorldNativeAccess<LevelChunk, Bl
     @Nullable
     @Override
     public BlockState setBlockState(LevelChunk chunk, BlockPos position, BlockState state) {
-        if (chunk instanceof ExtendedChunk extendedChunk) {
-            return extendedChunk.setBlockState(
-                position, state, 0, sideEffectSet.shouldApply(SideEffect.UPDATE)
+        if (chunk instanceof ExtendedChunk) {
+            return ((ExtendedChunk) chunk).setBlockState(
+                position, state, false, sideEffectSet.shouldApply(SideEffect.UPDATE)
             );
         }
-        return chunk.setBlockState(position, state, 0);
+        return chunk.setBlockState(position, state, false);
     }
 
     @Override
@@ -109,8 +111,7 @@ public class FabricWorldNativeAccess implements WorldNativeAccess<LevelChunk, Bl
         if (tileEntity == null) {
             return false;
         }
-        var tagValueInput = TagValueInput.create(ProblemReporter.DISCARDING, level.registryAccess(), nativeTag);
-        tileEntity.loadWithComponents(tagValueInput);
+        tileEntity.loadWithComponents(nativeTag, level.registryAccess());
         tileEntity.setChanged();
         return true;
     }
@@ -136,7 +137,7 @@ public class FabricWorldNativeAccess implements WorldNativeAccess<LevelChunk, Bl
 
     @Override
     public void notifyNeighbors(BlockPos pos, BlockState oldState, BlockState newState) {
-        getWorld().updateNeighborsAt(pos, oldState.getBlock());
+        getWorld().blockUpdated(pos, oldState.getBlock());
         if (newState.hasAnalogOutputSignal()) {
             getWorld().updateNeighbourForOutputSignal(pos, newState.getBlock());
         }
@@ -158,11 +159,10 @@ public class FabricWorldNativeAccess implements WorldNativeAccess<LevelChunk, Bl
 
     @Override
     public void onBlockStateChange(BlockPos pos, BlockState oldState, BlockState newState) {
-        getWorld().updatePOIOnBlockStateChange(pos, oldState, newState);
+        getWorld().onBlockStateChange(pos, oldState, newState);
     }
 
     @Override
     public void flush() {
-        // No queued state to flush on Fabric's native access
     }
 }

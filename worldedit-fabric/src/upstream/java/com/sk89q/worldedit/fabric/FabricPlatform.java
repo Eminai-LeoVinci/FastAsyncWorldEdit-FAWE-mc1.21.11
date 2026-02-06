@@ -19,10 +19,10 @@
 
 package com.sk89q.worldedit.fabric;
 
-import com.google.common.collect.Iterables;
-import com.google.common.collect.Sets;
 import com.fastasyncworldedit.core.extent.processor.lighting.NMSRelighter;
 import com.fastasyncworldedit.core.extent.processor.lighting.RelighterFactory;
+import com.google.common.collect.Iterables;
+import com.google.common.collect.Sets;
 import com.sk89q.worldedit.entity.Player;
 import com.sk89q.worldedit.extension.platform.AbstractPlatform;
 import com.sk89q.worldedit.extension.platform.Actor;
@@ -37,7 +37,7 @@ import com.sk89q.worldedit.world.DataFixer;
 import com.sk89q.worldedit.world.World;
 import com.sk89q.worldedit.world.registry.Registries;
 import net.minecraft.SharedConstants;
-import net.minecraft.resources.Identifier;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.dedicated.DedicatedServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -86,7 +86,7 @@ class FabricPlatform extends AbstractPlatform implements MultiUserPlatform {
 
     @Override
     public int getDataVersion() {
-        return SharedConstants.getCurrentVersion().dataVersion().version();
+        return SharedConstants.getCurrentVersion().getDataVersion().getVersion();
     }
 
     @Override
@@ -97,7 +97,7 @@ class FabricPlatform extends AbstractPlatform implements MultiUserPlatform {
     @Override
     public boolean isValidMobType(String type) {
         return FabricWorldEdit.getRegistry(net.minecraft.core.registries.Registries.ENTITY_TYPE)
-            .containsKey(Identifier.parse(type));
+            .containsKey(ResourceLocation.parse(type));
     }
 
     @Override
@@ -186,25 +186,8 @@ class FabricPlatform extends AbstractPlatform implements MultiUserPlatform {
 
     @Override
     public String id() {
-        return "intellectualsites:fabric";
+        return "enginehub:fabric";
     }
-
-    //FAWE start
-    @Override
-    public RelighterFactory getRelighterFactory() {
-        return (relightMode, world, queue) -> new NMSRelighter(queue, relightMode);
-    }
-
-    @Override
-    public int versionMinY() {
-        return -64;
-    }
-
-    @Override
-    public int versionMaxY() {
-        return 319;
-    }
-    //FAWE end
 
     @Override
     public Map<Capability, Preference> getCapabilities() {
@@ -239,6 +222,21 @@ class FabricPlatform extends AbstractPlatform implements MultiUserPlatform {
     @Override
     public long getTickCount() {
         return FabricWorldEdit.LIFECYCLED_SERVER.valueOrThrow().getTickCount();
+    }
+
+    @Override
+    public int versionMinY() {
+        return -64;
+    }
+
+    @Override
+    public int versionMaxY() {
+        return 319;
+    }
+
+    @Override
+    public RelighterFactory getRelighterFactory() {
+        return (relightMode, world, queue) -> new NMSRelighter(queue, relightMode);
     }
 
     @Override

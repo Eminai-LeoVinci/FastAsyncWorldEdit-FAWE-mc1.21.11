@@ -19,18 +19,17 @@
 
 package com.sk89q.worldedit.fabric;
 
+import com.sk89q.util.StringUtil;
 import com.sk89q.worldedit.blocks.BaseItemStack;
 import com.sk89q.worldedit.entity.BaseEntity;
 import com.sk89q.worldedit.extension.platform.AbstractPlayerActor;
 import com.sk89q.worldedit.extent.inventory.BlockBag;
-import com.sk89q.worldedit.fabric.internal.ComponentConverter;
 import com.sk89q.worldedit.fabric.internal.NBTConverter;
+import com.sk89q.worldedit.fabric.net.handler.WECUIPacketHandler;
 import com.sk89q.worldedit.internal.cui.CUIEvent;
 import com.sk89q.worldedit.math.BlockVector3;
 import com.sk89q.worldedit.math.Vector3;
 import com.sk89q.worldedit.session.SessionKey;
-import com.fastasyncworldedit.core.configuration.Settings;
-import com.fastasyncworldedit.core.limit.FaweLimit;
 import com.sk89q.worldedit.util.HandSide;
 import com.sk89q.worldedit.util.Location;
 import com.sk89q.worldedit.util.formatting.WorldEditText;
@@ -53,19 +52,14 @@ import net.minecraft.world.InteractionHand;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import org.enginehub.linbus.tree.LinCompoundTag;
-import org.enginehub.worldeditcui.protocol.CUIPacket;
 
 import java.util.Locale;
-import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 import javax.annotation.Nullable;
 
 public class FabricPlayer extends AbstractPlayerActor {
 
     private final ServerPlayer player;
-    private final Map<String, Boolean> permissionOverrides = new ConcurrentHashMap<>();
 
     protected FabricPlayer(ServerPlayer player) {
         this.player = player;
@@ -97,7 +91,7 @@ public class FabricPlayer extends AbstractPlayerActor {
     public Location getLocation() {
         Vector3 position = Vector3.at(this.player.getX(), this.player.getY(), this.player.getZ());
         return new Location(
-            FabricWorldEdit.inst.getWorld(this.player.level()),
+            FabricWorldEdit.inst.getWorld(this.player.serverLevel()),
             position,
             this.player.getYRot(),
             this.player.getXRot());
@@ -109,19 +103,17 @@ public class FabricPlayer extends AbstractPlayerActor {
         this.player.teleportTo(
             level,
             location.getX(), location.getY(), location.getZ(),
-            Set.of(),
-            location.getYaw(), location.getPitch(),
-            true
+            location.getYaw(), location.getPitch()
         );
         // This check doesn't really ever get to be false in Fabric
         // Since Fabric API doesn't allow cancelling the teleport.
         // However, other mods could theoretically mix this in, so allow the detection.
-        return this.player.level() == level;
+        return this.player.serverLevel() == level;
     }
 
     @Override
     public World getWorld() {
-        return FabricWorldEdit.inst.getWorld(this.player.level());
+        return FabricWorldEdit.inst.getWorld(this.player.serverLevel());
     }
 
     @Override
@@ -131,9 +123,14 @@ public class FabricPlayer extends AbstractPlayerActor {
 
     @Override
     public void dispatchCUIEvent(CUIEvent event) {
+        String[] params = event.getParameters();
+        String send = event.getTypeId();
+        if (params.length > 0) {
+            send = send + "|" + StringUtil.joinString(params, "|");
+        }
         ServerPlayNetworking.send(
             this.player,
-            new CUIPacket(event.getTypeId(), event.getParameters())
+            new WECUIPacketHandler.CuiPacket(send)
         );
     }
 
@@ -145,7 +142,7 @@ public class FabricPlayer extends AbstractPlayerActor {
     @Override
     @Deprecated
     public void printRaw(String msg) {
-        for (String part : msg.split("\n", 0)) {
+        for (String part : msg.split("\n")) {
             this.player.sendSystemMessage(
                 net.minecraft.network.chat.Component.literal(part)
             );
@@ -172,14 +169,18 @@ public class FabricPlayer extends AbstractPlayerActor {
 
     @Override
     public void print(Component component) {
-        this.player.sendSystemMessage(ComponentConverter.Serializer.fromJson(
+        this.player.sendSystemMessage(net.minecraft.network.chat.Component.Serializer.fromJson(
             GsonComponentSerializer.INSTANCE.serialize(WorldEditText.format(component, getLocale())),
             player.level().registryAccess()
         ));
     }
 
+    @Override
+    public void sendTitle(Component title, Component sub) {
+    }
+
     private void sendColorized(String msg, ChatFormatting formatting) {
-        for (String part : msg.split("\n", 0)) {
+        for (String part : msg.split("\n")) {
             MutableComponent component = net.minecraft.network.chat.Component.literal(part)
                 .withStyle(style -> style.withColor(formatting));
             this.player.sendSystemMessage(component);
@@ -203,25 +204,12 @@ public class FabricPlayer extends AbstractPlayerActor {
     }
 
     @Override
-    public FaweLimit getLimit() {
-        FaweLimit limit = Settings.settings().getLimit(this);
-        // Fabric queue/chunk access isn't fully wired yet; avoid fast placement queue path.
-        limit.FAST_PLACEMENT = false;
-        return limit;
-    }
-
-    @Override
     public boolean hasPermission(String perm) {
-        Boolean override = permissionOverrides.get(perm);
-        if (override != null) {
-            return override;
-        }
         return FabricWorldEdit.inst.getPermissionsProvider().hasPermission(player, perm);
     }
 
     @Override
     public void setPermission(String permission, boolean value) {
-        permissionOverrides.put(permission, value);
     }
 
     @Nullable
@@ -246,12 +234,12 @@ public class FabricPlayer extends AbstractPlayerActor {
     @Override
     public <B extends BlockStateHolder<B>> void sendFakeBlock(BlockVector3 pos, B block) {
         World world = getWorld();
-        if (!(world instanceof FabricWorld fabricWorld)) {
+        if (!(world instanceof FabricWorld)) {
             return;
         }
         BlockPos loc = FabricAdapter.toBlockPos(pos);
         if (block == null) {
-            final ClientboundBlockUpdatePacket packetOut = new ClientboundBlockUpdatePacket(fabricWorld.getWorld(), loc);
+            final ClientboundBlockUpdatePacket packetOut = new ClientboundBlockUpdatePacket(((FabricWorld) world).getWorld(), loc);
             player.connection.send(packetOut);
         } else {
             final ClientboundBlockUpdatePacket packetOut = new ClientboundBlockUpdatePacket(
@@ -259,8 +247,8 @@ public class FabricPlayer extends AbstractPlayerActor {
                 FabricAdapter.adapt(block.toImmutableState())
             );
             player.connection.send(packetOut);
-            if (block instanceof BaseBlock baseBlock && block.getBlockType().equals(BlockTypes.STRUCTURE_BLOCK)) {
-                final LinCompoundTag nbtData = baseBlock.getNbt();
+            if (block instanceof BaseBlock && block.getBlockType().equals(BlockTypes.STRUCTURE_BLOCK)) {
+                final LinCompoundTag nbtData = ((BaseBlock) block).getNbt();
                 if (nbtData != null) {
                     player.connection.send(new ClientboundBlockEntityDataPacket(
                         new BlockPos(pos.x(), pos.y(), pos.z()),
@@ -269,16 +257,6 @@ public class FabricPlayer extends AbstractPlayerActor {
                     ));
                 }
             }
-        }
-    }
-
-    @Override
-    public void sendTitle(Component title, Component sub) {
-        if (title != null) {
-            print(title);
-        }
-        if (sub != null) {
-            print(sub);
         }
     }
 
