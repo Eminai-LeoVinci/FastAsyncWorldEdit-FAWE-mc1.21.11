@@ -20,7 +20,6 @@
 package com.sk89q.worldedit.fabric.internal;
 
 import com.sk89q.worldedit.fabric.FabricAdapter;
-import com.sk89q.worldedit.internal.block.BlockStateIdAccess;
 import com.sk89q.worldedit.internal.wna.WorldNativeAccess;
 import com.sk89q.worldedit.util.SideEffect;
 import com.sk89q.worldedit.util.SideEffectSet;
@@ -66,10 +65,7 @@ public class FabricWorldNativeAccess implements WorldNativeAccess<LevelChunk, Bl
 
     @Override
     public BlockState toNative(com.sk89q.worldedit.world.block.BlockState state) {
-        int stateId = BlockStateIdAccess.getBlockStateId(state);
-        return BlockStateIdAccess.isValidInternalId(stateId)
-            ? Block.stateById(stateId)
-            : FabricAdapter.adapt(state);
+        return FabricAdapter.adapt(state);
     }
 
     @Override
@@ -160,6 +156,34 @@ public class FabricWorldNativeAccess implements WorldNativeAccess<LevelChunk, Bl
     @Override
     public void onBlockStateChange(BlockPos pos, BlockState oldState, BlockState newState) {
         getWorld().onBlockStateChange(pos, oldState, newState);
+    }
+
+    @Override
+    public void markAndNotifyBlock(
+        BlockPos pos,
+        LevelChunk chunk,
+        BlockState oldState,
+        BlockState newState,
+        SideEffectSet sideEffectSet
+    ) {
+        BlockState currentState = getBlockState(chunk, pos);
+        if (currentState != newState) {
+            return;
+        }
+
+        if (isChunkTicking(chunk)) {
+            // Always push network updates so FAWE edits are immediately visible to connected players.
+            notifyBlockUpdate(chunk, pos, oldState, newState);
+        }
+
+        if (sideEffectSet.shouldApply(SideEffect.NEIGHBORS)) {
+            notifyNeighbors(pos, oldState, newState);
+            updateNeighbors(pos, oldState, newState, 512);
+        }
+
+        if (sideEffectSet.shouldApply(SideEffect.POI_UPDATE)) {
+            onBlockStateChange(pos, oldState, currentState);
+        }
     }
 
     @Override
