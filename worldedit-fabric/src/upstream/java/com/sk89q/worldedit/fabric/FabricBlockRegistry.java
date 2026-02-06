@@ -27,10 +27,17 @@ import com.sk89q.worldedit.world.block.BlockState;
 import com.sk89q.worldedit.world.block.BlockType;
 import com.sk89q.worldedit.world.registry.BlockMaterial;
 import com.sk89q.worldedit.world.registry.BundledBlockRegistry;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.util.StringRepresentable;
 import net.minecraft.world.level.block.Block;
 
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.HashMap;
+import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.OptionalInt;
 import java.util.TreeMap;
@@ -71,4 +78,58 @@ public class FabricBlockRegistry extends BundledBlockRegistry {
         net.minecraft.world.level.block.state.BlockState equivalent = FabricAdapter.adapt(state);
         return OptionalInt.of(Block.getId(equivalent));
     }
+
+    // FAWE start
+    @Override
+    public Collection<String> values() {
+        List<String> blocks = new ArrayList<>();
+        for (Block block : BuiltInRegistries.BLOCK) {
+            ResourceLocation id = BuiltInRegistries.BLOCK.getKey(block);
+            if (id == null) {
+                continue;
+            }
+            net.minecraft.world.level.block.state.BlockState state = block.defaultBlockState();
+            Map<net.minecraft.world.level.block.state.properties.Property<?>, Comparable<?>> values = state.getValues();
+            if (values.isEmpty()) {
+                blocks.add(id.toString());
+                continue;
+            }
+            StringBuilder builder = new StringBuilder(id.toString()).append('[');
+            boolean first = true;
+            for (Map.Entry<net.minecraft.world.level.block.state.properties.Property<?>, Comparable<?>> entry : values.entrySet()
+                .stream()
+                .sorted(Comparator.comparing(e -> e.getKey().getName()))
+                .toList()
+            ) {
+                if (!first) {
+                    builder.append(',');
+                }
+                first = false;
+                builder.append(entry.getKey().getName()).append('=');
+                Comparable<?> value = entry.getValue();
+                if (value instanceof StringRepresentable stringRepresentable) {
+                    builder.append(stringRepresentable.getSerializedName());
+                } else {
+                    builder.append(value);
+                }
+            }
+            builder.append(']');
+            blocks.add(builder.toString());
+        }
+        return blocks;
+    }
+
+    @Override
+    public Map<String, ? extends List<Property<?>>> getAllProperties() {
+        Map<String, List<Property<?>>> all = new TreeMap<>();
+        for (Block block : BuiltInRegistries.BLOCK) {
+            for (net.minecraft.world.level.block.state.properties.Property<?> property : block.defaultBlockState().getProperties()) {
+                Property<?> weProperty = FabricTransmogrifier.transmogToWorldEditProperty(property);
+                String key = weProperty.getName().toLowerCase(Locale.ROOT);
+                all.computeIfAbsent(key, ignored -> new ArrayList<>()).add(weProperty);
+            }
+        }
+        return all;
+    }
+    // FAWE end
 }

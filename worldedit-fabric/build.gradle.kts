@@ -49,8 +49,6 @@ dependencies {
         parchment("org.parchmentmc.data:parchment-${libs.versions.parchment.minecraft.get()}:${libs.versions.parchment.mappings.get()}@zip")
     })
     "modImplementation"(libs.fabric.loader)
-    "include"(libs.cuiProtocol.fabric)
-    "modImplementation"(libs.cuiProtocol.fabric)
     "include"(libs.parallelgzip)
     "modImplementation"(libs.parallelgzip)
     "include"(libs.sparsebitset)
@@ -58,7 +56,7 @@ dependencies {
 
     // [1] Load the API dependencies from the fabric mod json...
     @Suppress("UNCHECKED_CAST")
-    val fabricModJson = file("src/main/resources/fabric.mod.json").bufferedReader().use {
+    val fabricModJson = file("src/upstream/resources/fabric.mod.json").bufferedReader().use {
         groovy.json.JsonSlurper().parse(it) as Map<String, Map<String, *>>
     }
     val wantedDependencies = (fabricModJson["depends"] ?: error("no depends in fabric.mod.json")).keys

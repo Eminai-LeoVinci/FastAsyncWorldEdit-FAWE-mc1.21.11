@@ -45,11 +45,14 @@ import com.sk89q.worldedit.world.biome.BiomeCategory;
 import com.sk89q.worldedit.world.biome.BiomeType;
 import com.sk89q.worldedit.world.block.BlockCategory;
 import com.sk89q.worldedit.world.block.BlockType;
+import com.sk89q.worldedit.world.block.BlockTypes;
 import com.sk89q.worldedit.world.entity.EntityType;
+import com.sk89q.worldedit.world.gamemode.GameModes;
 import com.sk89q.worldedit.world.generation.ConfiguredFeatureType;
 import com.sk89q.worldedit.world.generation.StructureType;
 import com.sk89q.worldedit.world.item.ItemCategory;
 import com.sk89q.worldedit.world.item.ItemType;
+import com.sk89q.worldedit.world.weather.WeatherTypes;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
@@ -220,13 +223,8 @@ public class FabricWorldEdit implements ModInitializer {
     }
 
     private void setupRegistries(MinecraftServer server) {
-        // Blocks
-        for (ResourceLocation name : server.registryAccess().registryOrThrow(Registries.BLOCK).keySet()) {
-            if (BlockType.REGISTRY.get(name.toString()) == null) {
-                BlockType.REGISTRY.register(name.toString(), new BlockType(name.toString(),
-                    input -> FabricAdapter.adapt(FabricAdapter.adapt(input.getBlockType()).defaultBlockState())));
-            }
-        }
+        // Ensure FAWE block registry (and block states) is initialized once from platform block registry data.
+        BlockTypes.size();
         // Items
         for (ResourceLocation name : server.registryAccess().registryOrThrow(Registries.ITEM).keySet()) {
             if (ItemType.REGISTRY.get(name.toString()) == null) {
@@ -283,6 +281,9 @@ public class FabricWorldEdit implements ModInitializer {
                 StructureType.REGISTRY.register(name.toString(), new StructureType(name.toString()));
             }
         }
+        // Force lazy static init for generic game values used by parsers.
+        GameModes.get("");
+        WeatherTypes.get("");
     }
 
     private void onStartingServer(MinecraftServer minecraftServer) {

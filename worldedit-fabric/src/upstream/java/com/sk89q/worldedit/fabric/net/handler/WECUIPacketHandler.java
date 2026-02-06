@@ -31,10 +31,13 @@ import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.ResourceLocation;
 
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public final class WECUIPacketHandler {
     private WECUIPacketHandler() {
     }
+
+    private static final AtomicBoolean INITIALIZED = new AtomicBoolean(false);
 
     public static final ResourceLocation CUI_IDENTIFIER = ResourceLocation.fromNamespaceAndPath(FabricWorldEdit.MOD_ID, FabricWorldEdit.CUI_PLUGIN_CHANNEL);
 
@@ -48,16 +51,27 @@ public final class WECUIPacketHandler {
     }
 
     public static void init() {
+        if (!INITIALIZED.compareAndSet(false, true)) {
+            return;
+        }
         StreamCodec<RegistryFriendlyByteBuf, CuiPacket> codec = CustomPacketPayload.codec(
             (packet, buffer) -> buffer.writeCharSequence(packet.text(), StandardCharsets.UTF_8),
             buffer -> new CuiPacket(buffer.readCharSequence(buffer.readableBytes(), StandardCharsets.UTF_8).toString())
         );
-        PayloadTypeRegistry.playC2S().register(CuiPacket.TYPE, codec);
-        PayloadTypeRegistry.playS2C().register(CuiPacket.TYPE, codec);
-        ServerPlayNetworking.registerGlobalReceiver(CuiPacket.TYPE, (payload, context) -> {
+        registerIgnoringDuplicate(() -> PayloadTypeRegistry.playC2S().register(CuiPacket.TYPE, codec));
+        registerIgnoringDuplicate(() -> PayloadTypeRegistry.playS2C().register(CuiPacket.TYPE, codec));
+        registerIgnoringDuplicate(() -> ServerPlayNetworking.registerGlobalReceiver(CuiPacket.TYPE, (payload, context) -> {
             LocalSession session = FabricWorldEdit.inst.getSession(context.player());
             FabricPlayer actor = FabricAdapter.adaptPlayer(context.player());
             session.handleCUIInitializationMessage(payload.text(), actor);
-        });
+        }));
+    }
+
+    private static void registerIgnoringDuplicate(Runnable registration) {
+        try {
+            registration.run();
+        } catch (IllegalArgumentException ignored) {
+            // Already registered by another initializer or classpath entry.
+        }
     }
 }
