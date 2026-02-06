@@ -24,7 +24,6 @@ import com.sk89q.worldedit.blocks.BaseItemStack;
 import com.sk89q.worldedit.extension.platform.Actor;
 import com.sk89q.worldedit.fabric.internal.FabricTransmogrifier;
 import com.sk89q.worldedit.fabric.internal.NBTConverter;
-import com.sk89q.worldedit.internal.block.BlockStateIdAccess;
 import com.sk89q.worldedit.math.BlockVector3;
 import com.sk89q.worldedit.math.Vector3;
 import com.sk89q.worldedit.registry.state.Property;
@@ -188,31 +187,20 @@ public final class FabricAdapter {
     }
 
     public static net.minecraft.world.level.block.state.BlockState adapt(BlockState blockState) {
-        int blockStateId = BlockStateIdAccess.getBlockStateId(blockState);
-        if (!BlockStateIdAccess.isValidInternalId(blockStateId)) {
-            return FabricTransmogrifier.transmogToMinecraft(blockState);
-        }
-        return Block.stateById(blockStateId);
+        // FAWE internal ids are not guaranteed to match Mojang runtime blockstate ids on Fabric.
+        // Use explicit property mapping to avoid wrong/no-op placements.
+        return FabricTransmogrifier.transmogToMinecraft(blockState);
     }
 
     public static BlockState adapt(net.minecraft.world.level.block.state.BlockState blockState) {
-        int blockStateId = Block.getId(blockState);
-        BlockState worldEdit = BlockStateIdAccess.getBlockStateById(blockStateId);
-        if (worldEdit == null) {
-            return FabricTransmogrifier.transmogToWorldEdit(blockState);
-        }
-        return worldEdit;
+        return FabricTransmogrifier.transmogToWorldEdit(blockState);
     }
 
     public static BaseBlock adapt(BlockEntity blockEntity) {
         if (!blockEntity.hasLevel()) {
             throw new IllegalArgumentException("BlockEntity must have a level");
         }
-        int blockStateId = Block.getId(blockEntity.getBlockState());
-        BlockState worldEdit = BlockStateIdAccess.getBlockStateById(blockStateId);
-        if (worldEdit == null) {
-            worldEdit = FabricTransmogrifier.transmogToWorldEdit(blockEntity.getBlockState());
-        }
+        BlockState worldEdit = FabricTransmogrifier.transmogToWorldEdit(blockEntity.getBlockState());
         // Save this outside the reference to ensure it doesn't mutate
         CompoundTag savedNative = blockEntity.saveWithId(blockEntity.getLevel().registryAccess());
         return worldEdit.toBaseBlock(LazyReference.from(() -> NBTConverter.fromNative(savedNative)));
