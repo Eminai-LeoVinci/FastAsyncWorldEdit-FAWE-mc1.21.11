@@ -59,9 +59,13 @@ public final class CommandWrapper {
         aliases.add(command.getName()).addAll(command.getAliases());
 
         Command<CommandSourceStack> commandRunner = ctx -> {
+            String input = ctx.getInput();
+            if (!input.startsWith("/")) {
+                input = "/" + input;
+            }
             WorldEdit.getInstance().getEventBus().post(new com.sk89q.worldedit.event.platform.CommandEvent(
                 adaptCommandSource(ctx.getSource()),
-                "/" + ctx.getInput()
+                input
             ));
             return 0;
         };
