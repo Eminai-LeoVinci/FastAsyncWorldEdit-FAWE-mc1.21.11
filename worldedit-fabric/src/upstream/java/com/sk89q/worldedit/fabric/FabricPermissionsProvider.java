@@ -40,8 +40,12 @@ public interface FabricPermissionsProvider {
         @Override
         public boolean hasPermission(ServerPlayer player, String permission) {
             FabricConfiguration configuration = platform.getConfiguration();
+            boolean singlePlayerOwner = !player.server.isDedicatedServer()
+                && player.server.isSingleplayerOwner(player.getGameProfile());
+            boolean operator = player.hasPermissions(player.server.getOperatorUserPermissionLevel());
             return configuration.cheatMode
-                || player.server.getPlayerList().isOp(player.getGameProfile())
+                || singlePlayerOwner
+                || operator
                 || (configuration.creativeEnable && player.gameMode.getGameModeForPlayer() == GameType.CREATIVE);
         }
 
