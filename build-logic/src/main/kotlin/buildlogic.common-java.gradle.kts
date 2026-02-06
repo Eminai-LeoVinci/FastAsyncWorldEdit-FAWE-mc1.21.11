@@ -2,9 +2,16 @@ import buildlogic.stringyLibs
 import buildlogic.getLibrary
 
 plugins {
-    id("eclipse")
-    id("idea")
     id("buildlogic.common")
+}
+
+val enableIdePlugins = gradle.startParameter.taskNames.any { taskName ->
+    taskName.contains("idea", ignoreCase = true)
+            || taskName.contains("eclipse", ignoreCase = true)
+}
+if (enableIdePlugins) {
+    pluginManager.apply("eclipse")
+    pluginManager.apply("idea")
 }
 
 tasks

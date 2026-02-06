@@ -18,13 +18,14 @@ pipeline {
                 sh 'rm -rf artifacts'
                 sh 'mkdir artifacts'
                 sh 'cp worldedit-bukkit/build/libs/FastAsyncWorldEdit*.jar artifacts/'
+                sh 'cp worldedit-fabric/build/libs/*-dist.jar artifacts/'
                 sh 'cp worldedit-cli/build/libs/FastAsyncWorldEdit*.jar artifacts/'
                 archiveArtifacts artifacts: 'artifacts/*.jar', followSymlinks: false
             }
         }
         stage('Fingerprint artifacts') {
             steps {
-                fingerprint 'worldedit-bukkit/build/libs/FastAsyncWorldEdit*.jar'
+                fingerprint 'worldedit-bukkit/build/libs/FastAsyncWorldEdit*.jar,worldedit-fabric/build/libs/*-dist.jar'
             }
         }
         stage('Publish JUnit test results') {

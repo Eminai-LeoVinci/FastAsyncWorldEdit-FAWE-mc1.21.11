@@ -89,11 +89,9 @@ tasks.named("sourcesJar") {
 // Give intellij info about where ANTLR code comes from
 plugins.withId("idea") {
     configure<IdeaModel> {
-        afterEvaluate {
-            module.sourceDirs.add(file("src/main/antlr"))
-            module.sourceDirs.add(file("build/generated-src/antlr/main"))
-            module.generatedSourceDirs.add(file("build/generated-src/antlr/main"))
-        }
+        module.sourceDirs.add(file("src/main/antlr"))
+        module.sourceDirs.add(file("build/generated-src/antlr/main"))
+        module.generatedSourceDirs.add(file("build/generated-src/antlr/main"))
     }
 }
 
@@ -113,9 +111,11 @@ tasks.named<Copy>("processResources") {
     }
 }
 
-configure<PublishingExtension> {
-    publications.named<MavenPublication>("maven") {
-        artifactId = the<BasePluginExtension>().archivesName.get()
-        from(components["java"])
+plugins.withId("maven-publish") {
+    configure<PublishingExtension> {
+        publications.named<MavenPublication>("maven") {
+            artifactId = the<BasePluginExtension>().archivesName.get()
+            from(components["java"])
+        }
     }
 }

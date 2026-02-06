@@ -36,6 +36,7 @@ import com.sk89q.worldedit.world.World;
 import com.sk89q.worldedit.world.block.BaseBlock;
 import com.sk89q.worldedit.world.block.BlockStateHolder;
 import com.sk89q.worldedit.world.gamemode.GameMode;
+import com.fastasyncworldedit.core.limit.FaweLimit;
 
 import javax.annotation.Nullable;
 import java.util.Locale;
@@ -259,6 +260,11 @@ public class PlayerProxy extends AbstractPlayerActor {
     @Override
     public Locale getLocale() {
         return basePlayer.getLocale();
+    }
+
+    @Override
+    public FaweLimit getLimit() {
+        return permActor.getLimit();
     }
 
     //FAWE start

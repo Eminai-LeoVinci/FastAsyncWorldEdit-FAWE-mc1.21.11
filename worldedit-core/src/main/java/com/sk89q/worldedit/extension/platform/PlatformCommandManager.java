@@ -776,11 +776,18 @@ public final class PlatformCommandManager {
             if (context instanceof MemoizingValueAccess) {
                 context = ((MemoizingValueAccess) context).snapshotMemory();
             }
-            Optional<EditSession> editSessionOpt = context.injectedValue(Key.of(EditSession.class));
+            EditSession editSession = context.injectedValue(Key.of(EditSession.class)).orElse(null);
+            if (editSession == null) {
+                // Some execution paths keep the edit session only in Request, not in injected values.
+                editSession = Request.request().getEditSession();
+            }
+            LOGGER.info(
+                    "[FAWE-FABRIC-DEBUG] command-finalize actor={} eventHasSession={} injectedOrRequestSession={}",
+                    actor.getUniqueId(), event.getSession() != null, editSession != null
+            );
 
             // Require null CommandEvent#getSession as it means the editsession is being handled somewhere else.
-            if (editSessionOpt.isPresent() && event.getSession() == null) {
-                EditSession editSession = editSessionOpt.get();
+            if (editSession != null && event.getSession() == null) {
                 editSession.close();
                 session.remember(editSession);
 

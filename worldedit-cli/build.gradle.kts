@@ -51,10 +51,12 @@ tasks.named("assemble").configure {
     dependsOn("shadowJar")
 }
 
-configure<PublishingExtension> {
-    publications.named<MavenPublication>("maven") {
-        artifactId = the<BasePluginExtension>().archivesName.get()
-        from(components["java"])
+plugins.withId("maven-publish") {
+    configure<PublishingExtension> {
+        publications.named<MavenPublication>("maven") {
+            artifactId = the<BasePluginExtension>().archivesName.get()
+            from(components["java"])
+        }
     }
 }
 

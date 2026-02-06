@@ -307,8 +307,10 @@ publishMods {
     // dryRun.set(true) // For testing
 }
 
-configure<PublishingExtension> {
-    publications.named<MavenPublication>("maven") {
-        from(components["java"])
+plugins.withId("maven-publish") {
+    configure<PublishingExtension> {
+        publications.named<MavenPublication>("maven") {
+            from(components["java"])
+        }
     }
 }

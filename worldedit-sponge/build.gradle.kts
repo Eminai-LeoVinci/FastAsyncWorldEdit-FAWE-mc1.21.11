@@ -26,9 +26,6 @@ repositories {
     }
     mavenCentral()
     verifyEngineHubRepositories()
-    afterEvaluate {
-        verifyEngineHubRepositories()
-    }
 }
 
 sponge {
@@ -91,8 +88,10 @@ tasks.named("assemble").configure {
     dependsOn("shadowJar")
 }
 
-configure<PublishingExtension> {
-    publications.named<MavenPublication>("maven") {
-        from(components["java"])
+plugins.withId("maven-publish") {
+    configure<PublishingExtension> {
+        publications.named<MavenPublication>("maven") {
+            from(components["java"])
+        }
     }
 }

@@ -2,6 +2,10 @@ import kotlin.system.exitProcess
 
 pluginManagement {
     repositories {
+        maven {
+            name = "FabricMC"
+            url = uri("https://maven.fabricmc.net/")
+        }
         gradlePluginPortal()
         maven {
             name = "EngineHub Repository"
@@ -11,6 +15,7 @@ pluginManagement {
 }
 plugins {
     id("org.gradle.toolchains.foojay-resolver-convention") version "1.0.0"
+    id("fabric-loom") version "1.14.7"
 }
 dependencyResolutionManagement {
     repositories {
@@ -59,7 +64,7 @@ listOf("1_20_2", "1_20_4", "1_20_5", "1_21", "1_21_4", "1_21_5", "1_21_6", "1_21
     include("worldedit-bukkit:adapters:adapter-$it")
 }
 
-listOf("bukkit", "core", "cli").forEach {
+listOf("bukkit", "core", "fabric", "cli").forEach {
     include("worldedit-libs:$it")
     include("worldedit-$it")
 }

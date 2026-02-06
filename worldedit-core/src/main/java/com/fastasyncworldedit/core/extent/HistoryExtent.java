@@ -3,11 +3,21 @@ package com.fastasyncworldedit.core.extent;
 import com.fastasyncworldedit.core.history.changeset.AbstractChangeSet;
 import com.fastasyncworldedit.core.math.MutableBlockVector3;
 import com.fastasyncworldedit.core.nbt.FaweCompoundTag;
+import com.sk89q.worldedit.MaxChangedBlocksException;
 import com.sk89q.worldedit.WorldEditException;
 import com.sk89q.worldedit.entity.BaseEntity;
 import com.sk89q.worldedit.entity.Entity;
 import com.sk89q.worldedit.extent.AbstractDelegateExtent;
 import com.sk89q.worldedit.extent.Extent;
+import com.sk89q.worldedit.function.RegionMaskingFilter;
+import com.sk89q.worldedit.function.block.BlockReplace;
+import com.sk89q.worldedit.function.mask.BlockMask;
+import com.sk89q.worldedit.function.mask.ExistingBlockMask;
+import com.sk89q.worldedit.function.mask.Mask;
+import com.sk89q.worldedit.function.operation.Operations;
+import com.sk89q.worldedit.function.pattern.BlockPattern;
+import com.sk89q.worldedit.function.pattern.Pattern;
+import com.sk89q.worldedit.function.visitor.RegionVisitor;
 import com.sk89q.worldedit.history.changeset.ChangeSet;
 import com.sk89q.worldedit.math.BlockVector3;
 import com.sk89q.worldedit.regions.Region;
@@ -19,6 +29,7 @@ import com.sk89q.worldedit.world.block.BlockStateHolder;
 import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 import static com.google.common.base.Preconditions.checkNotNull;
@@ -68,6 +79,78 @@ public class HistoryExtent extends AbstractDelegateExtent {
     @Override
     public <B extends BlockStateHolder<B>> boolean setBlock(BlockVector3 location, B block) throws WorldEditException {
         return setBlock(location.x(), location.y(), location.z(), block);
+    }
+
+    @Override
+    public <B extends BlockStateHolder<B>> int setBlocks(Region region, B block) throws MaxChangedBlocksException {
+        checkNotNull(region);
+        checkNotNull(block);
+
+        int changes = 0;
+        for (BlockVector3 pos : region) {
+            if (setBlock(pos, block)) {
+                changes++;
+            }
+        }
+        return changes;
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public int setBlocks(Region region, Pattern pattern) throws MaxChangedBlocksException {
+        checkNotNull(region);
+        checkNotNull(pattern);
+
+        if (pattern instanceof BlockPattern) {
+            return setBlocks(region, ((BlockPattern) pattern).getBlock());
+        }
+
+        int count = 0;
+        for (BlockVector3 pos : region) {
+            if (pattern.apply(this, pos, pos)) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    @Override
+    public int setBlocks(Set<BlockVector3> vset, Pattern pattern) {
+        if (vset instanceof Region) {
+            return setBlocks((Region) vset, pattern);
+        }
+        int count = 0;
+        for (BlockVector3 pos : vset) {
+            if (pattern.apply(this, pos, pos)) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    @Override
+    public <B extends BlockStateHolder<B>> int replaceBlocks(Region region, Set<BaseBlock> filter, B replacement)
+            throws MaxChangedBlocksException {
+        return replaceBlocks(region, filter, (Pattern) replacement);
+    }
+
+    @Override
+    public int replaceBlocks(Region region, Set<BaseBlock> filter, Pattern pattern) throws MaxChangedBlocksException {
+        Mask mask = filter == null ? new ExistingBlockMask(this) : new BlockMask(this, filter);
+        return replaceBlocks(region, mask, pattern);
+    }
+
+    @Override
+    public int replaceBlocks(Region region, Mask mask, Pattern pattern) throws MaxChangedBlocksException {
+        checkNotNull(region);
+        checkNotNull(mask);
+        checkNotNull(pattern);
+
+        BlockReplace replace = new BlockReplace(this, pattern);
+        RegionMaskingFilter filter = new RegionMaskingFilter(mask, replace);
+        RegionVisitor visitor = new RegionVisitor(region, filter, this);
+        Operations.completeLegacy(visitor);
+        return visitor.getAffected();
     }
 
     @Nullable

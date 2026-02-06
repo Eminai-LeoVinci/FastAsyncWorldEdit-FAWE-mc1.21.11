@@ -1,28 +1,37 @@
 plugins {
     id("java")
-    id("maven-publish")
     id("buildlogic.common-java")
     id("signing")
 }
 
 ext["internalVersion"] = "$version+${rootProject.ext["gitCommitHash"]}"
 
-val publishingExtension = the<PublishingExtension>()
-
-configure<SigningExtension> {
-    if (!version.toString().endsWith("-SNAPSHOT")) {
-        val signingKey: String? by project
-        val signingPassword: String? by project
-        useInMemoryPgpKeys(signingKey, signingPassword)
-        isRequired
-        sign(publishingExtension.publications)
-    }
+val enablePublishing = gradle.startParameter.taskNames.any { taskName ->
+    taskName.contains("publish", ignoreCase = true)
+            || taskName.contains("maven", ignoreCase = true)
+            || taskName.contains("nmcp", ignoreCase = true)
+            || taskName.contains("sign", ignoreCase = true)
+}
+if (enablePublishing) {
+    pluginManager.apply("maven-publish")
 }
 
-publishing {
-    publications {
-        register<MavenPublication>("maven") {
-            afterEvaluate {
+plugins.withId("maven-publish") {
+    val publishingExtension = the<PublishingExtension>()
+
+    configure<SigningExtension> {
+        if (!version.toString().endsWith("-SNAPSHOT")) {
+            val signingKey: String? by project
+            val signingPassword: String? by project
+            useInMemoryPgpKeys(signingKey, signingPassword)
+            isRequired
+            sign(publishingExtension.publications)
+        }
+    }
+
+    configure<PublishingExtension> {
+        publications {
+            register<MavenPublication>("maven") {
                 versionMapping {
                     usage("java-api") {
                         fromResolutionOf("runtimeClasspath")
@@ -31,11 +40,11 @@ publishing {
                         fromResolutionResult()
                     }
                 }
-                group = "com.fastasyncworldedit"
-                artifactId = "${rootProject.name}-${project.description}"
+                groupId = "com.fastasyncworldedit"
+                artifactId = "${rootProject.name}-${project.name}"
                 version = "$version"
                 pom {
-                    name.set("${rootProject.name}-${project.description}" + " " + project.version)
+                    name.set("${rootProject.name}-${project.name}" + " " + project.version)
                     description.set("Blazingly fast Minecraft world manipulation for artists, builders and everyone else.")
                     url.set("https://github.com/IntellectualSites/FastAsyncWorldEdit")
 

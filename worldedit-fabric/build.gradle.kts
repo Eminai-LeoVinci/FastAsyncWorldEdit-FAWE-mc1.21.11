@@ -18,17 +18,26 @@ platform {
 val fabricApiConfiguration: Configuration = configurations.create("fabricApi")
 
 loom {
-    accessWidenerPath.set(project.file("src/main/resources/worldedit.accesswidener"))
+    accessWidenerPath.set(project.file("src/upstream/resources/worldedit.accesswidener"))
 }
 
 tasks.withType<RunGameTask>().configureEach {
     javaLauncher.set(javaToolchains.launcherFor(java.toolchain))
 }
 
-repositories {
-    afterEvaluate {
-        verifyEngineHubRepositories()
+tasks.named<RunGameTask>("runClient") {
+    args("--width", "320", "--height", "180")
+}
+
+sourceSets {
+    named("main") {
+        java.setSrcDirs(listOf("src/upstream/java"))
+        resources.setSrcDirs(listOf("src/upstream/resources"))
     }
+}
+
+repositories {
+    verifyEngineHubRepositories()
 }
 
 dependencies {
@@ -42,6 +51,10 @@ dependencies {
     "modImplementation"(libs.fabric.loader)
     "include"(libs.cuiProtocol.fabric)
     "modImplementation"(libs.cuiProtocol.fabric)
+    "include"(libs.parallelgzip)
+    "modImplementation"(libs.parallelgzip)
+    "include"(libs.sparsebitset)
+    "modImplementation"(libs.sparsebitset)
 
     // [1] Load the API dependencies from the fabric mod json...
     @Suppress("UNCHECKED_CAST")
@@ -69,10 +82,12 @@ configure<BasePluginExtension> {
     archivesName.set("${project.name}-mc${libs.fabric.minecraft.get().version}")
 }
 
-configure<PublishingExtension> {
-    publications.named<MavenPublication>("maven") {
-        artifactId = the<BasePluginExtension>().archivesName.get()
-        from(components["java"])
+plugins.withId("maven-publish") {
+    configure<PublishingExtension> {
+        publications.named<MavenPublication>("maven") {
+            artifactId = the<BasePluginExtension>().archivesName.get()
+            from(components["java"])
+        }
     }
 }
 
@@ -81,7 +96,7 @@ tasks.named<Copy>("processResources") {
     // this will ensure that this task is redone when the versions change.
     inputs.property("version", internalVersion)
     filesMatching("fabric.mod.json") {
-        this.expand("version" to internalVersion)
+        this.expand(mapOf("version" to internalVersion))
     }
 }
 

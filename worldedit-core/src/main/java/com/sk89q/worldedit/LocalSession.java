@@ -83,8 +83,10 @@ import com.sk89q.worldedit.world.item.ItemType;
 import com.sk89q.worldedit.world.snapshot.experimental.Snapshot;
 import com.zaxxer.sparsebits.SparseBitSet;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
+import org.apache.logging.log4j.Logger;
 import org.enginehub.linbus.tree.LinCompoundTag;
 import org.enginehub.linbus.tree.LinTagType;
+import com.sk89q.worldedit.internal.util.LogManagerCompat;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
@@ -115,6 +117,7 @@ public class LocalSession implements TextureHolder {
 
     public static int MAX_HISTORY_SIZE = 15;
     private static final int CUI_VERSION_UNINITIALIZED = -1;
+    private static final Logger LOGGER = LogManagerCompat.getLogger();
 
     // Non-session related fields
     private transient LocalConfiguration config;
@@ -457,12 +460,9 @@ public class LocalSession implements TextureHolder {
     public void remember(EditSession editSession) {
         checkNotNull(editSession);
 
-        // Don't store anything if no changes were made
-        if (editSession.size() == 0) {
-            return;
-        }
-
         //FAWE start
+        // Some command paths can complete with a populated ChangeSet while size() remains 0.
+        // Rely on change set checks in remember(editSession, ...) instead.
         Actor actor = editSession.getActor();
         int limit = actor == null ? Integer.MAX_VALUE : actor.getLimit().MAX_HISTORY;
         remember(editSession, true, limit);
@@ -547,21 +547,39 @@ public class LocalSession implements TextureHolder {
     public void remember(EditSession editSession, boolean append, int limitMb) {
         historyWriteLock.lock();
         try {
+            Actor actor = editSession.getActor();
+            String actorId = actor == null ? "null" : String.valueOf(actor.getUniqueId());
+            String worldName = editSession.getWorld() == null ? "null" : editSession.getWorld().getNameUnsafe();
+            LOGGER.info(
+                    "[FAWE-FABRIC-DEBUG] remember-start actor={} world={} historySize={} historyNegative={} blockChanges={} append={} limitMb={}",
+                    actorId, worldName, history.size(), getHistoryNegativeIndex(), editSession.getBlockChangeCount(), append, limitMb
+            );
             if (Settings.settings().HISTORY.USE_DISK) {
                 LocalSession.MAX_HISTORY_SIZE = Integer.MAX_VALUE;
             }
             // It should have already been flushed, but just in case!
             editSession.flushQueue();
             if (editSession.getChangeSet() == null || limitMb == 0 || historySize >> 20 > limitMb && !append) {
+                LOGGER.info(
+                        "[FAWE-FABRIC-DEBUG] remember-skip actor={} world={} reason=null-changeset-or-limit historySize={} historyNegative={}",
+                        actorId, worldName, history.size(), getHistoryNegativeIndex()
+                );
                 return;
             }
 
             ChangeSet changeSet = editSession.getChangeSet();
+            LOGGER.info(
+                    "[FAWE-FABRIC-DEBUG] remember-changeset actor={} world={} type={} longSize={} empty={}",
+                    actorId, worldName, changeSet.getClass().getName(), changeSet.longSize(), changeSet.isEmpty()
+            );
             if (changeSet.isEmpty()) {
+                LOGGER.info(
+                        "[FAWE-FABRIC-DEBUG] remember-skip actor={} world={} reason=empty-changeset historySize={} historyNegative={}",
+                        actorId, worldName, history.size(), getHistoryNegativeIndex()
+                );
                 return;
             }
 
-            Actor actor = editSession.getActor();
             if (actor != null) {
                 loadSessionHistoryFromDisk(actor.getUniqueId(), editSession.getWorld());
             }
@@ -602,6 +620,10 @@ public class LocalSession implements TextureHolder {
                 long size = MainUtil.getSize(item);
                 historySize -= size;
             }
+            LOGGER.info(
+                    "[FAWE-FABRIC-DEBUG] remember-done actor={} world={} historySize={} historyNegative={} historyIndex={}",
+                    actorId, worldName, history.size(), getHistoryNegativeIndex(), getHistoryIndex()
+            );
             // free the mask from any remaining references to e.g. extents
             // if used again
             new MaskTraverser(mask).reset(NullExtent.INSTANCE);
@@ -610,6 +632,16 @@ public class LocalSession implements TextureHolder {
         }
     }
     //FAWE end
+
+    private static boolean shouldForceWna(@Nullable World world) {
+        if (world == null) {
+            return false;
+        }
+        World unwrapped = WorldWrapper.unwrap(world);
+        String worldClass = world.getClass().getName();
+        String unwrappedClass = unwrapped.getClass().getName();
+        return worldClass.contains(".fabric.") || unwrappedClass.contains(".fabric.");
+    }
 
     /**
      * Performs an undo.
@@ -625,7 +657,23 @@ public class LocalSession implements TextureHolder {
         if (world == null) {
             throw new MissingWorldException();
         }
+        boolean forceWna = shouldForceWna(world);
+        LOGGER.info(
+                "[FAWE-FABRIC-DEBUG] undo-start actor={} world={} worldClass={} unwrappedClass={} forceWna={} historySize={} historyNegative={} historyIndex={}",
+                actor.getUniqueId(),
+                world.getNameUnsafe(),
+                world.getClass().getName(),
+                WorldWrapper.unwrap(world).getClass().getName(),
+                forceWna,
+                history.size(),
+                getHistoryNegativeIndex(),
+                getHistoryIndex()
+        );
         loadSessionHistoryFromDisk(actor.getUniqueId(), world);
+        LOGGER.info(
+                "[FAWE-FABRIC-DEBUG] undo-after-load actor={} world={} historySize={} historyNegative={} historyIndex={}",
+                actor.getUniqueId(), world.getNameUnsafe(), history.size(), getHistoryNegativeIndex(), getHistoryIndex()
+        );
         if (getHistoryNegativeIndex() < history.size()) {
             ChangeSet changeSet = getChangeSet(history.get(getHistoryIndex()));
             EditSessionBuilder builder = WorldEdit.getInstance().newEditSessionBuilder().world(world)
@@ -634,6 +682,9 @@ public class LocalSession implements TextureHolder {
                     .fastMode(false)
                     .limitUnprocessed(actor)
                     .actor(actor);
+            if (forceWna) {
+                builder.forceWNA();
+            }
             if (actor instanceof Player) {
                 builder = builder.blockBag(getBlockBag((Player) actor));
             }
@@ -671,6 +722,7 @@ public class LocalSession implements TextureHolder {
         if (world == null) {
             throw new MissingWorldException();
         }
+        boolean forceWna = shouldForceWna(world);
         loadSessionHistoryFromDisk(actor.getUniqueId(), world);
         if (getHistoryNegativeIndex() > 0) {
             setDirty();
@@ -682,6 +734,9 @@ public class LocalSession implements TextureHolder {
                     .fastMode(false)
                     .limitUnprocessed(actor)
                     .actor(actor);
+            if (forceWna) {
+                builder.forceWNA();
+            }
             if (actor instanceof Player) {
                 builder = builder.blockBag(getBlockBag((Player) actor));
             }
@@ -1753,6 +1808,13 @@ public class LocalSession implements TextureHolder {
         //FAWE start
         builder.command(command);
         builder.fastMode(this.fastMode);
+        builder.changeSet(
+                Settings.settings().HISTORY.USE_DISK,
+                actor != null ? actor.getUniqueId() : Identifiable.CONSOLE
+        );
+        if (shouldForceWna(world)) {
+            builder.forceWNA();
+        }
         if (!this.fastMode) {
             builder.setSideEffectSet(this.sideEffectSet);
         }
