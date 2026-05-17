@@ -1,95 +1,98 @@
-# FastAsyncWorldEdit
-[![Join us on Discord](https://img.shields.io/discord/268444645527126017.svg?label=&logo=discord&logoColor=ffffff&color=7389D8&labelColor=6A7EC2)](https://discord.gg/intellectualsites)
-[![bStats Servers](https://img.shields.io/bstats/servers/1403)](https://bstats.org/plugin/bukkit/FastAsyncWorldEdit/1403)
-[![Crowdin](https://badges.crowdin.net/e/4a5819fae3fd88234a8ea13bfbb072bb/localized.svg)](https://intellectualsites.crowdin.com/fastasyncworldedit)
+# FastAsyncWorldEdit — Fabric port for Minecraft 1.21.11
 
-## What is FAWE and why should I use it?
+An **unofficial** Fabric build of FastAsyncWorldEdit, ported to Minecraft 1.21.11 and extended with a few quality-of-life features aimed at very large pastes.
 
-FAWE is designed for efficient world editing.
-* Simple to set up and use
-* Extremely configurable
-* Uses minimal CPU/Memory
-* Safe for many players to use
-* Insanely fast, when using the slowest mode
+> ⚠️ This is a personal fork. It is **not** affiliated with or supported by IntellectualSites, the upstream FAWE team, or the maintainers of the original Fabric port. Do not file bug reports against upstream for issues with this build.
 
-FastAsyncWorldEdit is a fork of WorldEdit that has huge speed and memory improvements and considerably more features.  
-If you use other plugins which depend on WorldEdit, simply having FAWE installed will boost their performance.
+---
 
-## Downloads
+## What this fork is
 
-Releases are available either on Modrinth or on CurseForge.
-- [Modrinth](https://modrinth.com/plugin/fastasyncworldedit/)
-- [CurseForge](https://dev.bukkit.org/projects/fawe)
+Branch `fabric-1.21.1` in this repo is built from:
 
-### Experimental Builds
-- [Jenkins](https://ci.athion.net/job/FastAsyncWorldEdit/)
+- **sk89q WorldEdit** — the original world-editing library
+- **[IntellectualSites / FastAsyncWorldEdit](https://github.com/IntellectualSites/FastAsyncWorldEdit)** — the FAWE rewrite (Bukkit/Paper focus)
+- **[Plaaasma's FAWE Fabric port](https://github.com/Plaaasma/FastAsyncWorldEdit)** (`fabric-1.21.1` branch) — the Fabric module this is forked from
+- **This repo** — 1.21.11 compatibility shims and a few extra commands
 
-## Features
+The Fabric module targets the Minecraft 1.21.11 runtime while staying on the 1.21.1 Yarn-mapped source tree. API drift between 1.21.1 and 1.21.11 is handled with reflective fallbacks inside `FabricAdapter` and friends, so the same source compiles against either runtime.
 
-* Over 200 Commands
-* Style and translate messages and commands
-* (No setup required) Clipboard web integration (Clipboard)
-* Unlimited //undo, per world history, instant lookups/rollback and cross server clipboards
-* Advanced per player limits (entity, tiles, memory, changes, iterations, regions, inventory)
-* Visualization, targeting modes/masks and scroll actions
-* Adds lots of powerful new //brushes and //tools.
-* Adds a lot more mask functionality. (new mask syntax, patterns, expressions, source masks)
-* Adds a lot more pattern functionality. (a lot of new pattern syntax and patterns)
-* Adds edit transforms (apply transforms to a source, e.g. on //paste)
-* Adds support for new formats (e.g. Structure Blocks)
-* Instant copying of arbitrary size with `//lazycopy`
-* Auto repair partially corrupt schematic files
-* Biome mixing, in-game world painting, dynamic view distance, vanilla cui, off axis rotation, image importing, cave generation,
-  multi-clipboards, interactive messages, schematic visualization, lag prevention, persistent brushes + A LOT MORE
+A second branch (`fabric-1.21.11`, parked) was an earlier attempt at retargeting the whole source tree at 1.21.11 mappings; it is kept for reference only — all active work happens on `fabric-1.21.1`.
 
-### Performance
+---
 
-There are several placement modes, each supporting higher throughput than the previous. All editing is processed
-asynchronously, with
-certain tasks being broken up on the main thread. The default mode is chunk placement.
-* Blocks (Bukkit-API) - Only used if chunk placement isn't supported. Still faster than any other plugin on spigot.
-* Chunks (NMS) - Places entire chunk sections
-* World (CFI) - Used to generate new worlds / regions
+## What this fork adds on top of upstream
 
-### Protection Plugins
+### Large-paste progress reporting
+Both `//copy` and `//paste` (and `//place`) now report progress as a percentage of expected block changes, with an ETA. Useful when copying or pasting tens of millions of blocks.
 
-The following plugins are supported with Bukkit:
-* [WorldGuard](https://dev.bukkit.org/projects/worldguard)
-* [PlotSquared](https://www.spigotmc.org/resources/77506/)
+### `/fawestatus` / `/fs` command
+A live status command that reports:
+- FAWE blocking-executor active/queued/done counts
+- ForkJoin pool stats (primary + secondary)
+- The active `EditSession` for the calling player, with blocks changed, percent of expected total, and rate/ETA
 
-### Logging and Rollback
+Useful for sanity-checking whether a long-running paste is actually making progress or stuck.
 
-By default you can use `//inspect` and `//history rollback` to search and restore changes. To reduce disk usage, increase the
-compression level and buffer size. To bypass logging use `//fast`.
+### Paste-resume system
+Long pastes can be resumed if the server crashes or the operation is cancelled mid-flight.
 
-### Developer API
+While a `//paste` runs, completed chunks are tracked in a per-player JSON file under the server's FAWE config directory. State is flushed every ~2 seconds. After a crash:
 
-FAWE maintains API compatibility with WorldEdit, so you can use the normal WorldEdit API asynchronously.
-FAWE also has some asynchronously wrappers for the Bukkit API.
-The wiki has examples for various things like reading NBT, modifying world files, pasting schematics, splitting up tasks, lighting etc.
-If you need help with anything, hop on discord (link on the left bar).
+1. Reconnect, re-load the same schematic into your clipboard, and stand at the same paste origin.
+2. Run `//pasteresume` (alias `/pres`).
+3. The resume command verifies the clipboard matches what was being pasted, installs a chunk-exclusion mask that skips every chunk the previous attempt finished, and resumes the paste with the same flags.
 
-## Documentation
+On clean completion the state file is deleted automatically.
 
-* [Wiki](https://intellectualsites.github.io/fastasyncworldedit-documentation/)
-* [Javadocs](https://intellectualsites.github.io/fastasyncworldedit-javadocs/)
+Source: `worldedit-core/src/main/java/com/fastasyncworldedit/core/paste/`
 
-## Contributing
+### 1.21.11 compatibility shims
+- `BlockEntity.loadWithComponents` was removed in 1.21.11 — `FabricAdapter.loadBlockEntityNbt` walks the BE class hierarchy and calls `loadCustomOnly` / `loadAdditional` as appropriate.
+- `BlockEntity.saveWithId` signature change handled reflectively.
+- `Component.Serializer.fromJson` replacement handled via codec lookup.
+- A handful of smaller arg-type and return-type changes are bridged the same way.
 
-Want to add new features to FastAsyncWorldEdit or fix bugs yourself? You can get the game running, with FastAsyncWorldEdit, from the code here:
+If you want to see the full set of touched files, the commit message on `0ef03671b` lists them.
 
-For additional information about compiling FastAsyncWorldEdit, read the [compiling documentation](https://github.com/IntellectualSites/FastAsyncWorldEdit/blob/main/COMPILING.adoc).
+---
 
-## Special thanks
+## Building
 
+Standard FAWE build. From the repo root:
 
-[![JetBrains logo.](https://resources.jetbrains.com/storage/products/company/brand/logos/jetbrains.svg)](https://jb.gg/OpenSource)
-<br>
-The creators of IntelliJ IDEA, supports us with their Open Source Licenses.
+```bash
+./gradlew :worldedit-fabric:build
+```
 
-<a href="https://yourkit.com/"><img src="https://www.yourkit.com/images/yklogo.png" width="200">
-</a>
+Output jar lands in `worldedit-fabric/build/libs/`. Drop the `-mc1.21.1-…-dist.jar` (the shadowed one, not the `-sources` or `-dev` jars) into your server's `mods/` folder.
 
-Thank you to YourKit for supporting our product by providing us with their innovative and intelligent tools
-for monitoring and profiling Java and .NET applications.
-YourKit is the creator of [YourKit Java Profiler](https://www.yourkit.com/java/profiler/), [YourKit .NET Profiler](https://www.yourkit.com/.net/profiler/), and [YourKit YouMonitor](https://www.yourkit.com/youmonitor/).
+Java 21 is required (Loom toolchain).
+
+---
+
+## Compatibility notes
+
+- Built against Yarn mappings for **1.21.1**; runs against the **1.21.11** runtime. Other 1.21.x point releases probably work but are not tested.
+- **Schematics created on newer Minecraft versions** (DataVersion > 4435) will fail to load. This is a forward-compatibility limit of the WorldEdit/FAWE schematic loader, not something this fork fixes. If you need to load a schematic from a newer MC version, edit its `DataVersion` NBT tag down before loading.
+- This fork has only been tested in singleplayer against a CurseForge 1.21.11 modpack. Multiplayer and dedicated-server use cases are unverified.
+
+---
+
+## License
+
+GPL-3.0 — preserved from the upstream WorldEdit / FAWE source. See `LICENSE`. All upstream copyright notices in source files are unchanged.
+
+---
+
+## Credits
+
+- **sk89q** and contributors — original WorldEdit
+- **[IntellectualSites](https://github.com/IntellectualSites)** — FastAsyncWorldEdit
+- **[Plaaasma](https://github.com/Plaaasma)** — upstream Fabric port
+- General FAWE features, brushes, masks, patterns, and command surface are all upstream's work; the Fabric module is Plaaasma's. This fork only adds the items listed under "What this fork adds" above.
+
+For general FAWE documentation, commands, and the wider feature set, see the upstream project:
+- [Wiki](https://intellectualsites.github.io/fastasyncworldedit-documentation/)
+- [Javadocs](https://intellectualsites.github.io/fastasyncworldedit-javadocs/)
+- [Discord](https://discord.gg/intellectualsites)
