@@ -291,15 +291,15 @@ public class FabricWorld extends AbstractWorld {
                 FabricAdapter.adapt(face), blockPos, false);
         UseOnContext itemUseContext = new UseOnContext(fakePlayer, InteractionHand.MAIN_HAND, rayTraceResult);
         InteractionResult used = stack.useOn(itemUseContext);
-        if (used != InteractionResult.SUCCESS) {
+        if (used != FabricAdapter.IR_SUCCESS) {
             // try activating the block
             used = getWorld().getBlockState(blockPos).useItemOn(stack, world, fakePlayer, InteractionHand.MAIN_HAND, rayTraceResult)
                 .result();
         }
-        if (used != InteractionResult.SUCCESS) {
+        if (used != FabricAdapter.IR_SUCCESS) {
             used = stack.use(world, fakePlayer, InteractionHand.MAIN_HAND).getResult();
         }
-        return used == InteractionResult.SUCCESS;
+        return used == FabricAdapter.IR_SUCCESS;
     }
 
     @Override
@@ -329,64 +329,12 @@ public class FabricWorld extends AbstractWorld {
 
     @Override
     public boolean regenerate(Region region, Extent extent, RegenOptions options) {
-        // Don't even try to regen if it's going to fail.
-        ChunkSource provider = getWorld().getChunkSource();
-        if (!(provider instanceof ServerChunkCache)) {
-            return false;
-        }
-
-        try {
-            doRegen(region, extent, options);
-        } catch (Exception e) {
-            throw new IllegalStateException("Regen failed", e);
-        }
-
-        return true;
-    }
-
-    private void doRegen(Region region, Extent extent, RegenOptions options) throws Exception {
-        Path tempDir = Files.createTempDirectory("WorldEditWorldGen");
-        LevelStorageSource levelStorage = LevelStorageSource.createDefault(tempDir);
-        try (LevelStorageSource.LevelStorageAccess session = levelStorage.createAccess("WorldEditTempGen")) {
-            ServerLevel originalWorld = (ServerLevel) getWorld();
-            PrimaryLevelData levelProperties = getPrimaryLevelData(originalWorld.getLevelData());
-            WorldOptions originalOpts = levelProperties.worldGenOptions();
-
-            long seed = options.getSeed().orElse(originalWorld.getSeed());
-            levelProperties.worldOptions = options.getSeed().isPresent()
-                ? originalOpts.withSeed(OptionalLong.of(seed))
-                : originalOpts;
-
-            ResourceKey<Level> worldRegKey = originalWorld.dimension();
-            try (ServerLevel serverWorld = new ServerLevel(
-                originalWorld.getServer(), Util.backgroundExecutor(), session,
-                ((ServerLevelData) originalWorld.getLevelData()),
-                worldRegKey,
-                new LevelStem(
-                    originalWorld.dimensionTypeRegistration(),
-                    originalWorld.getChunkSource().getGenerator()
-                ),
-                new WorldEditGenListener(),
-                originalWorld.isDebug(),
-                seed,
-                // No spawners are needed for this world.
-                ImmutableList.of(),
-                // This controls ticking, we don't need it so set it to false.
-                false,
-                originalWorld.getRandomSequences()
-            )) {
-                regenForWorld(region, extent, serverWorld, options);
-
-                // drive the server executor until all tasks are popped off
-                while (originalWorld.getServer().pollTask()) {
-                    Thread.yield();
-                }
-            } finally {
-                levelProperties.worldOptions = originalOpts;
-            }
-        } finally {
-            SafeFiles.tryHardToDeleteDir(tempDir);
-        }
+        // //regen builds a temporary ServerLevel whose constructor requires a
+        // ChunkProgressListener. That class was removed in 1.21.11, so even having the call
+        // in bytecode causes class-verification failures that propagate up and break ALL
+        // FabricWorld instantiation (including unrelated click handling). Keep this stub
+        // free of any ServerLevel-constructor or WorldEditGenListener references.
+        return false;
     }
 
     private static PrimaryLevelData getPrimaryLevelData(LevelData levelData) {
@@ -429,7 +377,7 @@ public class FabricWorld extends AbstractWorld {
             BlockStateHolder<?> state = FabricAdapter.adapt(chunk.getBlockState(pos));
             BlockEntity blockEntity = chunk.getBlockEntity(pos);
             if (blockEntity != null) {
-                net.minecraft.nbt.CompoundTag tag = blockEntity.saveWithId(serverWorld.registryAccess());
+                net.minecraft.nbt.CompoundTag tag = FabricAdapter.saveBlockEntityWithId(blockEntity, serverWorld.registryAccess());
                 state = state.toBaseBlock(LazyReference.from(() -> NBTConverter.fromNative(tag)));
             }
             extent.setBlock(vec, state.toBaseBlock());
@@ -646,7 +594,7 @@ public class FabricWorld extends AbstractWorld {
         BlockEntity tile = ((LevelChunk) getWorld().getChunk(pos)).getBlockEntity(pos, LevelChunk.EntityCreationType.CHECK);
 
         if (tile != null) {
-            net.minecraft.nbt.CompoundTag tag = tile.saveWithId(getWorld().registryAccess());
+            net.minecraft.nbt.CompoundTag tag = FabricAdapter.saveBlockEntityWithId(tile, getWorld().registryAccess());
             return getBlock(position).toBaseBlock(LazyReference.from(() -> NBTConverter.fromNative(tag)));
         } else {
             return getBlock(position).toBaseBlock();

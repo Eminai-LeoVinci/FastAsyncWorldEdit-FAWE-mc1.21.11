@@ -182,13 +182,32 @@ public final class NBTConverter {
     }
 
     public static LinListTag<?> fromNative(net.minecraft.nbt.ListTag other) {
+        // ListTag.getElementType() (1.21.1, method_10601) was renamed to getValueType()
+        // (1.21.11, method_68587). Both return byte. Probe reflectively.
         LinListTag.Builder<LinTag<?>> list = LinListTag.builder(LinTagType.fromId(
-            LinTagId.fromId(other.getElementType())
+            LinTagId.fromId(extractListElementType(other))
         ));
         for (net.minecraft.nbt.Tag tag : other) {
             list.add(fromNative(tag));
         }
         return list.build();
+    }
+
+    private static byte extractListElementType(net.minecraft.nbt.ListTag other) {
+        Class<?> cls = other.getClass();
+        for (String name : new String[]{"method_10601", "getElementType", "method_68587", "getValueType"}) {
+            try {
+                java.lang.reflect.Method m = cls.getMethod(name);
+                Object result = m.invoke(other);
+                if (result instanceof Byte) {
+                    return (Byte) result;
+                }
+            } catch (NoSuchMethodException ignored) {
+            } catch (Throwable ignored) {
+            }
+        }
+        // 0 = END type — yields an empty/untyped list which LinBus should handle gracefully.
+        return 0;
     }
 
     public static LinEndTag fromNative(net.minecraft.nbt.EndTag other) {
@@ -204,7 +223,26 @@ public final class NBTConverter {
     }
 
     public static LinStringTag fromNative(net.minecraft.nbt.StringTag other) {
-        return LinStringTag.of(other.getAsString());
+        // StringTag was refactored to a record in 1.21.11 — Tag.getAsString() removed.
+        // 1.21.11 exposes the value via record-component accessor (intermediary comp_3831,
+        // Mojang name value). Probe both versions.
+        return LinStringTag.of(extractStringTagValue(other));
+    }
+
+    private static String extractStringTagValue(net.minecraft.nbt.StringTag other) {
+        Class<?> cls = other.getClass();
+        for (String name : new String[]{"method_10714", "getAsString", "comp_3831", "value"}) {
+            try {
+                java.lang.reflect.Method m = cls.getMethod(name);
+                Object result = m.invoke(other);
+                if (result instanceof String) {
+                    return (String) result;
+                }
+            } catch (NoSuchMethodException ignored) {
+            } catch (Throwable ignored) {
+            }
+        }
+        return "";
     }
 
     public static LinIntTag fromNative(net.minecraft.nbt.IntTag other) {

@@ -63,7 +63,9 @@ public class FabricServerLevelDelegateProxy implements InvocationHandler {
             return null;
         }
         BlockEntity newEntity = tileEntity.getType().create(blockPos, getBlockState(blockPos));
-        newEntity.loadWithComponents(
+        // BlockEntity.loadWithComponents signature gone in 1.21.11; reflective helper.
+        com.sk89q.worldedit.fabric.FabricAdapter.loadBlockEntityNbt(
+            newEntity,
             NBTConverter.toNative(
                 this.editSession.getFullBlock(FabricAdapter.adapt(blockPos)).getNbtReference().getValue()
             ),

@@ -48,12 +48,22 @@ public class FabricBlockRegistry extends BundledBlockRegistry {
 
     @Override
     public Component getRichName(BlockType blockType) {
-        return TranslatableComponent.of(FabricAdapter.adapt(blockType).getDescriptionId());
+        Block block = FabricAdapter.adapt(blockType);
+        if (block == null) {
+            // WorldEdit knows about a block id that isn't present in this MC runtime
+            // (likely renamed/removed between the 1.21.1 the JAR was built against
+            // and the 1.21.11 it's running on). Fall back to a synthetic translation key.
+            return TranslatableComponent.of("block." + blockType.id().replace(':', '.'));
+        }
+        return TranslatableComponent.of(block.getDescriptionId());
     }
 
     @Override
     public BlockMaterial getMaterial(BlockType blockType) {
         Block block = FabricAdapter.adapt(blockType);
+        if (block == null) {
+            return super.getMaterial(blockType);
+        }
         return materialMap.computeIfAbsent(
             block.defaultBlockState(),
             m -> new FabricBlockMaterial(m, super.getMaterial(blockType))
@@ -64,6 +74,10 @@ public class FabricBlockRegistry extends BundledBlockRegistry {
     public Map<String, ? extends Property<?>> getProperties(BlockType blockType) {
         Block block = FabricAdapter.adapt(blockType);
         Map<String, Property<?>> map = new TreeMap<>();
+        if (block == null) {
+            // See note above in getRichName.
+            return map;
+        }
         Collection<net.minecraft.world.level.block.state.properties.Property<?>> propertyKeys = block
                 .defaultBlockState()
                 .getProperties();

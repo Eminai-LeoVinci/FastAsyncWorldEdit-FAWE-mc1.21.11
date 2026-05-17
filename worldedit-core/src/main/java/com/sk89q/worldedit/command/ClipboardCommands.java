@@ -165,7 +165,27 @@ public class ClipboardCommands {
         Clipboard clipboard = new BlockArrayClipboard(region, actor.getUniqueId());
         clipboard.setOrigin(centerClipboard ? region.getCenter().toBlockPoint().withY(region.getMinimumY()) :
                 session.getPlacementPosition(actor));
-        ForwardExtentCopy copy = new ForwardExtentCopy(editSession, region, clipboard, region.getMinimumPoint());
+
+        // Progress tracking for /fawestatus during //copy: tell it the expected total,
+        // and wrap the destination clipboard so every setBlock during the copy bumps
+        // the EditSession's progress counter. The unwrapped clipboard is what gets
+        // saved to the session - the wrapper only intercepts setBlock for counting.
+        try {
+            editSession.setExpectedBlockChanges((int) Math.min(Integer.MAX_VALUE, region.getVolume()));
+        } catch (Throwable ignored) {
+        }
+        final EditSession progressEditSession = editSession;
+        com.sk89q.worldedit.extent.Extent progressDest =
+            new com.sk89q.worldedit.extent.AbstractDelegateExtent(clipboard) {
+                @Override
+                public <T extends com.sk89q.worldedit.world.block.BlockStateHolder<T>>
+                        boolean setBlock(BlockVector3 position, T block) throws WorldEditException {
+                    progressEditSession.incrementChangesForProgress();
+                    return super.setBlock(position, block);
+                }
+            };
+
+        ForwardExtentCopy copy = new ForwardExtentCopy(editSession, region, progressDest, region.getMinimumPoint());
         copy.setCopyingEntities(copyEntities);
         createCopy(actor, session, editSession, copyBiomes, mask, clipboard, copy);
 
@@ -468,7 +488,57 @@ public class ClipboardCommands {
         checkPaste(actor, editSession, to, holder, clipboard);
 
         if (!onlySelect) {
-            clipboard.paste(editSession, to, !ignoreAirBlocks, pasteEntities, pasteBiomes);
+            // Tell /fawestatus the expected work size so it can show a completion %.
+            // Uses bounding-box volume; if ignoreAirBlocks is on the actual placed count
+            // will be lower, but the % gets capped at 100% downstream.
+            try {
+                editSession.setExpectedBlockChanges((int) Math.min(Integer.MAX_VALUE, clipboard.getRegion().getVolume()));
+            } catch (Throwable ignored) {
+            }
+            // Set up paste-resume tracking so a crashed paste can be continued via //pasteresume.
+            // Skip for actors without a UUID (shouldn't happen on Fabric but be defensive).
+            java.util.UUID resumeUuid = null;
+            try {
+                resumeUuid = actor.getUniqueId();
+            } catch (Throwable ignored) {
+            }
+            if (resumeUuid != null) {
+                com.fastasyncworldedit.core.paste.PasteResumeState rs =
+                    new com.fastasyncworldedit.core.paste.PasteResumeState();
+                rs.playerUuid = resumeUuid.toString();
+                rs.clipboardVolume = (int) Math.min(Integer.MAX_VALUE, clipboard.getRegion().getVolume());
+                BlockVector3 cMin = clipboard.getRegion().getMinimumPoint();
+                BlockVector3 cMax = clipboard.getRegion().getMaximumPoint();
+                BlockVector3 cOrigin = clipboard.getOrigin();
+                rs.clipboardMinX = cMin.getBlockX(); rs.clipboardMinY = cMin.getBlockY(); rs.clipboardMinZ = cMin.getBlockZ();
+                rs.clipboardMaxX = cMax.getBlockX(); rs.clipboardMaxY = cMax.getBlockY(); rs.clipboardMaxZ = cMax.getBlockZ();
+                rs.clipboardOriginX = cOrigin.getBlockX(); rs.clipboardOriginY = cOrigin.getBlockY(); rs.clipboardOriginZ = cOrigin.getBlockZ();
+                rs.targetX = to.getBlockX(); rs.targetY = to.getBlockY(); rs.targetZ = to.getBlockZ();
+                rs.ignoreAirBlocks = ignoreAirBlocks;
+                rs.atOrigin = atOrigin;
+                rs.pasteEntities = pasteEntities;
+                rs.pasteBiomes = pasteBiomes;
+                rs.removeEntities = removeEntities;
+                rs.totalBlocksExpected = rs.clipboardVolume;
+                if (world != null) {
+                    rs.worldId = world.getId();
+                }
+                com.fastasyncworldedit.core.paste.PasteResumeManager.instance().startTracking(resumeUuid, editSession, rs);
+            }
+
+            boolean crashed = true;
+            try {
+                clipboard.paste(editSession, to, !ignoreAirBlocks, pasteEntities, pasteBiomes);
+                crashed = false;
+            } finally {
+                if (resumeUuid != null) {
+                    if (crashed) {
+                        com.fastasyncworldedit.core.paste.PasteResumeManager.instance().finishCrashed(resumeUuid);
+                    } else {
+                        com.fastasyncworldedit.core.paste.PasteResumeManager.instance().finishSuccess(resumeUuid);
+                    }
+                }
+            }
         }
 
         Region region = clipboard.getRegion().clone();
@@ -498,6 +568,78 @@ public class ClipboardCommands {
         if (!actor.hasPermission("fawe.tips")) {
             actor.print(Caption.of("fawe.tips.tip.copypaste"));
         }
+    }
+
+    /**
+     * Resume a previously-crashed //paste from where it left off, skipping chunks already
+     * written. Reads the persistent resume state for the calling player, validates that
+     * the clipboard hasn't changed, then runs //paste with a chunk-exclusion mask.
+     */
+    @Command(
+            name = "/pasteresume",
+            aliases = {"/pres"},
+            desc = "Resume a paste that was previously cancelled or crashed, skipping already-placed chunks"
+    )
+    @CommandPermissions("worldedit.clipboard.paste")
+    @SynchronousSettingExpected
+    @Logging(PLACEMENT)
+    public void pasteResume(
+            Actor actor, World world, LocalSession session, final EditSession editSession
+    ) throws WorldEditException {
+        java.util.UUID uuid;
+        try {
+            uuid = actor.getUniqueId();
+        } catch (Throwable t) {
+            actor.printError(com.sk89q.worldedit.util.formatting.text.TextComponent.of(
+                "//pasteresume requires a player actor with a UUID."));
+            return;
+        }
+        com.fastasyncworldedit.core.paste.PasteResumeState state =
+            com.fastasyncworldedit.core.paste.PasteResumeState.load(uuid);
+        if (state == null) {
+            actor.printError(com.sk89q.worldedit.util.formatting.text.TextComponent.of(
+                "No saved paste-resume state found. Use //paste to start fresh."));
+            return;
+        }
+
+        ClipboardHolder holder = session.getClipboard();
+        Clipboard clipboard = holder.getClipboard();
+        BlockVector3 cMin = clipboard.getRegion().getMinimumPoint();
+        BlockVector3 cMax = clipboard.getRegion().getMaximumPoint();
+        BlockVector3 cOrigin = clipboard.getOrigin();
+        int curVolume = (int) Math.min(Integer.MAX_VALUE, clipboard.getRegion().getVolume());
+        if (!state.clipboardMatches(
+                curVolume,
+                cMin.getBlockX(), cMin.getBlockY(), cMin.getBlockZ(),
+                cMax.getBlockX(), cMax.getBlockY(), cMax.getBlockZ(),
+                cOrigin.getBlockX(), cOrigin.getBlockY(), cOrigin.getBlockZ())) {
+            actor.printError(com.sk89q.worldedit.util.formatting.text.TextComponent.of(
+                "Clipboard differs from the saved resume state. Use //paste from scratch."));
+            return;
+        }
+
+        int completedChunks = state.completedChunkCount();
+        int placed = state.blocksPlaced;
+        int total = state.totalBlocksExpected;
+        double pct = total > 0 ? (placed * 100.0) / total : 0.0;
+        actor.print(com.sk89q.worldedit.util.formatting.text.TextComponent.of(
+            String.format("Resuming paste: %d chunks already done, ~%.1f%% complete (%d / %d blocks). Skipping completed chunks.",
+                completedChunks, pct, placed, total)));
+
+        // Apply the chunk-exclusion mask to the EditSession built by the command framework.
+        // Then call place() with the saved flags. The mask filters every setBlock so chunks
+        // already written are skipped at the EditSession layer (essentially a //gmask).
+        com.fastasyncworldedit.core.paste.ChunkExclusionMask mask =
+            new com.fastasyncworldedit.core.paste.ChunkExclusionMask(state.completedChunks);
+        editSession.setMask(mask);
+
+        // place() rebuilds the resume state file as fresh tracking - the new chunks get
+        // added to the existing completed set so a second crash mid-resume continues to make
+        // forward progress. Apparently chunks already in state.completedChunks won't be touched
+        // anyway because of the mask above, so re-recording them is harmless.
+        place(actor, world, session, editSession,
+                state.ignoreAirBlocks, state.atOrigin, /*selectPasted=*/false, /*onlySelect=*/false,
+                state.pasteEntities, state.pasteBiomes, state.removeEntities);
     }
     //FAWE end
 
@@ -553,6 +695,11 @@ public class ClipboardCommands {
         //FAWE end
 
         if (!onlySelect) {
+            // Tell /fawestatus the expected work size for completion-% reporting.
+            try {
+                editSession.setExpectedBlockChanges((int) Math.min(Integer.MAX_VALUE, region.getVolume()));
+            } catch (Throwable ignored) {
+            }
             final Mask finalSourceMask = ignoreStructureVoidBlocks ?
                     MaskIntersection.of(sourceMask, new InverseSingleBlockTypeMask(clipboard, BlockTypes.STRUCTURE_VOID)) :
                     sourceMask;

@@ -132,15 +132,53 @@ class FabricDataFixer implements com.sk89q.worldedit.world.DataFixer {
     }
 
     private String nbtToState(net.minecraft.nbt.CompoundTag tagCompound) {
+        // CompoundTag.getString(String) returns String on 1.21.1 but Optional<String> on 1.21.11.
+        // getCompound(String) similarly returns Optional in 1.21.11. Use reflection-based helpers
+        // to handle both shapes so legacy block migration doesn't crash on the new runtime.
         StringBuilder sb = new StringBuilder();
-        sb.append(tagCompound.getString("Name"));
-        if (tagCompound.contains("Properties", 10)) {
+        sb.append(tagString(tagCompound, "Name"));
+        net.minecraft.nbt.CompoundTag props = tagCompound(tagCompound, "Properties");
+        if (props != null) {
             sb.append('[');
-            net.minecraft.nbt.CompoundTag props = tagCompound.getCompound("Properties");
-            sb.append(props.getAllKeys().stream().map(k -> k + "=" + props.getString(k).replace("\"", "")).collect(Collectors.joining(",")));
+            sb.append(props.getAllKeys().stream().map(k -> k + "=" + tagString(props, k).replace("\"", "")).collect(Collectors.joining(",")));
             sb.append(']');
         }
         return sb.toString();
+    }
+
+    private static String tagString(net.minecraft.nbt.CompoundTag tag, String key) {
+        try {
+            java.lang.reflect.Method m = tag.getClass().getMethod("getString", String.class);
+            Object result = m.invoke(tag, key);
+            if (result instanceof java.util.Optional) {
+                Object inner = ((java.util.Optional<?>) result).orElse(null);
+                return inner == null ? "" : inner.toString();
+            }
+            if (result instanceof String s) {
+                return s;
+            }
+        } catch (Throwable ignored) {
+        }
+        return "";
+    }
+
+    @Nullable
+    private static net.minecraft.nbt.CompoundTag tagCompound(net.minecraft.nbt.CompoundTag tag, String key) {
+        try {
+            java.lang.reflect.Method m = tag.getClass().getMethod("getCompound", String.class);
+            Object result = m.invoke(tag, key);
+            if (result instanceof java.util.Optional) {
+                Object inner = ((java.util.Optional<?>) result).orElse(null);
+                return inner instanceof net.minecraft.nbt.CompoundTag ? (net.minecraft.nbt.CompoundTag) inner : null;
+            }
+            if (result instanceof net.minecraft.nbt.CompoundTag c) {
+                // On 1.21.1, getCompound returns the tag (or empty CompoundTag if missing).
+                // To preserve the old "contains Properties" gating, fall back to checking emptiness.
+                return c.isEmpty() ? null : c;
+            }
+        } catch (Throwable ignored) {
+        }
+        return null;
     }
 
     private static net.minecraft.nbt.CompoundTag stateToNBT(String blockState) {

@@ -21,24 +21,26 @@ package com.sk89q.worldedit.fabric;
 
 import com.sk89q.worldedit.world.block.BlockType;
 import com.sk89q.worldedit.world.registry.BlockCategoryRegistry;
-import net.minecraft.core.Holder;
-import net.minecraft.core.HolderSet;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.tags.TagKey;
+import net.minecraft.world.level.block.Block;
 
+import java.util.Collections;
 import java.util.Set;
 import java.util.stream.Collectors;
 
 public class FabricBlockCategoryRegistry implements BlockCategoryRegistry {
     @Override
     public Set<BlockType> getCategorisedByName(String category) {
-        return FabricWorldEdit.getRegistry(Registries.BLOCK)
-            .getTag(TagKey.create(Registries.BLOCK, ResourceLocation.parse(category)))
-            .stream()
-            .flatMap(HolderSet.Named::stream)
-            .map(Holder::value)
-            .map(FabricAdapter::adapt)
-            .collect(Collectors.toSet());
+        // Registry.getTag(TagKey) was removed in 1.21.11 -> use reflective tag stream helper.
+        try {
+            TagKey<Block> tagKey = TagKey.create(Registries.BLOCK, ResourceLocation.parse(category));
+            return FabricAdapter.registryStreamTagValues(FabricWorldEdit.getRegistry(Registries.BLOCK), tagKey)
+                .map(FabricAdapter::adapt)
+                .collect(Collectors.toSet());
+        } catch (LinkageError | RuntimeException e) {
+            return Collections.emptySet();
+        }
     }
 }

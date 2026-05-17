@@ -57,7 +57,11 @@ public abstract class MixinLevelChunkSetBlockHook extends ChunkAccess implements
         // save the state for the hook
         shouldUpdate = update;
         try {
-            return setBlockState(pos, state, moved);
+            // LevelChunk.setBlockState(BlockPos, BlockState, boolean) was removed in 1.21.11
+            // (third arg is now int flags). Use reflective helper that handles both versions.
+            return com.sk89q.worldedit.fabric.FabricAdapter.rawChunkSetBlockState(
+                (LevelChunk) (Object) this, pos, state, moved
+            );
         } finally {
             // restore natural mode
             shouldUpdate = true;

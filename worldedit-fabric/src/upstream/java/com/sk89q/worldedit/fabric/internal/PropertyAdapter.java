@@ -20,6 +20,7 @@
 package com.sk89q.worldedit.fabric.internal;
 
 import com.google.common.collect.ImmutableList;
+import com.sk89q.worldedit.fabric.FabricAdapter;
 import com.sk89q.worldedit.registry.state.Property;
 
 import java.util.List;
@@ -34,7 +35,9 @@ class PropertyAdapter<T extends Comparable<T>> implements Property<T> {
 
     public PropertyAdapter(net.minecraft.world.level.block.state.properties.Property<T> property) {
         this.property = property;
-        this.values = ImmutableList.copyOf(property.getPossibleValues());
+        // Property.getPossibleValues() return type changed Collection -> List between
+        // 1.21.1 and 1.21.11; reflective helper works on both.
+        this.values = ImmutableList.copyOf(FabricAdapter.getPropertyPossibleValues(property));
     }
 
     @Override

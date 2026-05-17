@@ -53,6 +53,16 @@ dependencies {
     "modImplementation"(libs.parallelgzip)
     "include"(libs.sparsebitset)
     "modImplementation"(libs.sparsebitset)
+    // zstd-jni: FAWE's Fawe.setupConfigs() calls com.github.luben.zstd.ZstdOutputStream.
+    // worldedit-core declares it as a non-transitive implementation dep, so it doesn't flow
+    // through to here automatically. Bundle it as a nested JAR (do NOT relocate — zstd-jni
+    // loads its native lib via JNI and breaks if its package is rewritten).
+    "include"(libs.zstd)
+    "modImplementation"(libs.zstd)
+    // snakeyaml: FAWE's Config.load() uses org.yaml.snakeyaml.representer.Representer.
+    // Same reasoning as zstd — non-transitive in worldedit-core, must be bundled explicitly.
+    "include"(libs.snakeyaml)
+    "modImplementation"(libs.snakeyaml)
 
     // [1] Load the API dependencies from the fabric mod json...
     @Suppress("UNCHECKED_CAST")

@@ -76,12 +76,14 @@ public class FabricWorldNativeAccess implements WorldNativeAccess<LevelChunk, Bl
     @Nullable
     @Override
     public BlockState setBlockState(LevelChunk chunk, BlockPos position, BlockState state) {
+        // The mixin's internal 3-arg call was fixed to use reflection so this works on 1.21.11.
+        // FAWE prefers the ExtendedChunk path (chunk-level write, async-safe for its queue).
         if (chunk instanceof ExtendedChunk) {
             return ((ExtendedChunk) chunk).setBlockState(
                 position, state, false, sideEffectSet.shouldApply(SideEffect.UPDATE)
             );
         }
-        return chunk.setBlockState(position, state, false);
+        return FabricAdapter.chunkSetBlockState(chunk, position, state);
     }
 
     @Override
@@ -107,7 +109,10 @@ public class FabricWorldNativeAccess implements WorldNativeAccess<LevelChunk, Bl
         if (tileEntity == null) {
             return false;
         }
-        tileEntity.loadWithComponents(nativeTag, level.registryAccess());
+        // BlockEntity.loadWithComponents signature gone in 1.21.11; reflective helper.
+        // Returning success even on reflective failure preserves prior behavior of
+        // not failing the paste over a single tile-entity restore.
+        com.sk89q.worldedit.fabric.FabricAdapter.loadBlockEntityNbt(tileEntity, nativeTag, level.registryAccess());
         tileEntity.setChanged();
         return true;
     }

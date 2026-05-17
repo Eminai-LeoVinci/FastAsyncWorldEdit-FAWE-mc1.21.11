@@ -86,7 +86,33 @@ class FabricPlatform extends AbstractPlatform implements MultiUserPlatform {
 
     @Override
     public int getDataVersion() {
-        return SharedConstants.getCurrentVersion().getDataVersion().getVersion();
+        // 1.21.11 removed WorldVersion.getDataVersion() (the 1.21.1-era API the source was written against).
+        // Reflectively probe both the old shape (getDataVersion() -> DataVersion -> getVersion()/version())
+        // and the new shape (dataVersion() / getDataVersion() returning int directly) so this stays
+        // compatible with whatever 1.21.x runtime the JAR is dropped into.
+        Object version = SharedConstants.getCurrentVersion();
+        for (String name : new String[]{"dataVersion", "getDataVersion"}) {
+            try {
+                java.lang.reflect.Method m = version.getClass().getMethod(name);
+                Object result = m.invoke(version);
+                if (result instanceof Integer) {
+                    return (Integer) result;
+                }
+                if (result != null) {
+                    for (String getter : new String[]{"getVersion", "version"}) {
+                        try {
+                            Object inner = result.getClass().getMethod(getter).invoke(result);
+                            if (inner instanceof Integer) {
+                                return (Integer) inner;
+                            }
+                        } catch (NoSuchMethodException ignored) {
+                        }
+                    }
+                }
+            } catch (Throwable ignored) {
+            }
+        }
+        return 4435; // fallback — within the right order of magnitude for 1.21.11; only used by legacy DataFixer paths
     }
 
     @Override

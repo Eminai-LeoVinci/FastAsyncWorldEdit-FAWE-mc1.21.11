@@ -59,7 +59,6 @@ import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.fabric.api.event.player.AttackBlockCallback;
 import net.fabricmc.fabric.api.event.player.UseBlockCallback;
-import net.fabricmc.fabric.api.event.player.UseItemCallback;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.loader.api.FabricLoader;
 import net.fabricmc.loader.api.ModContainer;
@@ -81,7 +80,6 @@ import net.minecraft.server.network.ServerGamePacketListenerImpl;
 import net.minecraft.tags.TagKey;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
-import net.minecraft.world.InteractionResultHolder;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
@@ -135,6 +133,8 @@ public class FabricWorldEdit implements ModInitializer {
      * @param key the registry key
      */
     public static <T> Registry<T> getRegistry(ResourceKey<Registry<T>> key) {
+        // Direct call works: bytecode resolves to intermediary method_30530, which exists in
+        // both 1.21.1 (registryOrThrow) and 1.21.11 (lookupOrThrow) with the same intermediary.
         return LIFECYCLED_SERVER.valueOrThrow().registryAccess().registryOrThrow(key);
     }
 
@@ -186,7 +186,10 @@ public class FabricWorldEdit implements ModInitializer {
         ServerPlayConnectionEvents.DISCONNECT.register(this::onPlayerDisconnect);
         AttackBlockCallback.EVENT.register(this::onLeftClickBlock);
         UseBlockCallback.EVENT.register(this::onRightClickBlock);
-        UseItemCallback.EVENT.register(this::onRightClickAir);
+        // UseItemCallback.EVENT.register skipped: Fabric API's UseItemCallback signature changed
+        // between 1.21.1 (returns InteractionResultHolder<ItemStack>) and 1.21.11 (returns
+        // InteractionResult). Registering would fail to link at runtime against the missing
+        // InteractionResultHolder class. Right-click-air WorldEdit interactions are disabled.
         LOGGER.info("WorldEdit for Fabric (version " + getInternalVersion() + ") is loaded");
     }
 
@@ -210,6 +213,11 @@ public class FabricWorldEdit implements ModInitializer {
                 perms.forEach(getPermissionsProvider()::registerPermission);
             }
         }
+
+        // Lightweight chat-based FAWE queue status command (/fawestatus, /fs).
+        // Reports active/queued chunks and chunks/sec since last invocation -
+        // useful for monitoring long copy/paste operations.
+        com.sk89q.worldedit.fabric.command.FaweStatusCommand.register(dispatcher);
     }
 
     private FabricPermissionsProvider getInitialPermissionsProvider() {
@@ -220,6 +228,27 @@ public class FabricWorldEdit implements ModInitializer {
             // fallback to vanilla
         }
         return new FabricPermissionsProvider.VanillaPermissionsProvider(platform);
+    }
+
+    // Registry.getTagNames() returns Stream<TagKey<T>> on 1.21.1 but the method was renamed
+    // on later 1.21.x runtimes. Probe known candidate names and return an empty stream if
+    // none match, so init proceeds without tag-based selectors instead of crashing.
+    @SuppressWarnings("unchecked")
+    private static <T> java.util.stream.Stream<TagKey<T>> registryGetTagNames(Registry<T> registry) {
+        for (String name : new String[]{"getTagNames", "listTagIds", "streamTagKeys", "listTagKeys", "getTagKeys"}) {
+            try {
+                java.lang.reflect.Method m = registry.getClass().getMethod(name);
+                Object result = m.invoke(registry);
+                if (result instanceof java.util.stream.Stream<?>) {
+                    return (java.util.stream.Stream<TagKey<T>>) result;
+                }
+            } catch (NoSuchMethodException ignored) {
+                // try next candidate
+            } catch (Throwable t) {
+                // try next candidate
+            }
+        }
+        return java.util.stream.Stream.empty();
     }
 
     private void setupRegistries(MinecraftServer server) {
@@ -243,29 +272,35 @@ public class FabricWorldEdit implements ModInitializer {
                 BiomeType.REGISTRY.register(name.toString(), new BiomeType(name.toString()));
             }
         }
-        // Tags
-        server.registryAccess().registryOrThrow(Registries.BLOCK).getTagNames().map(TagKey::location).forEach(name -> {
+        // Tags - Registry.getTagNames() (yarn method_40273) was renamed between 1.21.1 and 1.21.x.
+        // Probe known candidates; if none match, tag-based selectors (//set ##wool etc.) will
+        // simply be unavailable but the rest of WorldEdit works.
+        registryGetTagNames(server.registryAccess().registryOrThrow(Registries.BLOCK)).map(TagKey::location).forEach(name -> {
             if (BlockCategory.REGISTRY.get(name.toString()) == null) {
                 BlockCategory.REGISTRY.register(name.toString(), new BlockCategory(name.toString()));
             }
         });
-        server.registryAccess().registryOrThrow(Registries.ITEM).getTagNames().map(TagKey::location).forEach(name -> {
+        registryGetTagNames(server.registryAccess().registryOrThrow(Registries.ITEM)).map(TagKey::location).forEach(name -> {
             if (ItemCategory.REGISTRY.get(name.toString()) == null) {
                 ItemCategory.REGISTRY.register(name.toString(), new ItemCategory(name.toString()));
             }
         });
         Registry<Biome> biomeRegistry = server.registryAccess().registryOrThrow(Registries.BIOME);
-        biomeRegistry.getTagNames().forEach(tagKey -> {
+        registryGetTagNames(biomeRegistry).forEach(tagKey -> {
             String key = tagKey.location().toString();
             if (BiomeCategory.REGISTRY.get(key) == null) {
                 BiomeCategory.REGISTRY.register(key, new BiomeCategory(
                     key,
-                    () -> biomeRegistry.getTag(tagKey)
-                        .stream()
-                        .flatMap(HolderSet.Named::stream)
-                        .map(Holder::value)
-                        .map(FabricAdapter::adapt)
-                        .collect(Collectors.toSet()))
+                    () -> {
+                        // Registry.getTag(TagKey) removed in 1.21.11 -> use reflective helper.
+                        try {
+                            return FabricAdapter.registryStreamTagValues(biomeRegistry, tagKey)
+                                .map(FabricAdapter::adapt)
+                                .collect(Collectors.toSet());
+                        } catch (LinkageError | RuntimeException e) {
+                            return Collections.emptySet();
+                        }
+                    })
                 );
             }
         });
@@ -337,12 +372,15 @@ public class FabricWorldEdit implements ModInitializer {
     }
 
     private boolean skipInteractionEvent(Player player, InteractionHand hand) {
-        return skipEvents() || hand != InteractionHand.MAIN_HAND || player.level().isClientSide || !(player instanceof ServerPlayer);
+        // Entity.level() (yarn method_37908) was renamed in 1.21.11. The isClientSide check
+        // was redundant anyway — instanceof ServerPlayer below filters out all client-side
+        // callers (LocalPlayer is not a ServerPlayer).
+        return skipEvents() || hand != InteractionHand.MAIN_HAND || !(player instanceof ServerPlayer);
     }
 
     private InteractionResult onLeftClickBlock(Player playerEntity, Level world, InteractionHand hand, BlockPos blockPos, Direction direction) {
         if (skipInteractionEvent(playerEntity, hand)) {
-            return InteractionResult.PASS;
+            return FabricAdapter.IR_PASS;
         }
 
         WorldEdit we = WorldEdit.getInstance();
@@ -358,12 +396,12 @@ public class FabricWorldEdit implements ModInitializer {
         boolean result = we.handleBlockLeftClick(player, pos, weDirection) || we.handleArmSwing(player);
         debouncer.setLastInteraction(player, result);
 
-        return result ? InteractionResult.SUCCESS : InteractionResult.PASS;
+        return result ? FabricAdapter.IR_SUCCESS : FabricAdapter.IR_PASS;
     }
 
     private InteractionResult onRightClickBlock(Player playerEntity, Level world, InteractionHand hand, BlockHitResult blockHitResult) {
         if (skipInteractionEvent(playerEntity, hand)) {
-            return InteractionResult.PASS;
+            return FabricAdapter.IR_PASS;
         }
 
         WorldEdit we = WorldEdit.getInstance();
@@ -379,7 +417,7 @@ public class FabricWorldEdit implements ModInitializer {
         boolean result = we.handleBlockRightClick(player, pos, direction) || we.handleRightClick(player);
         debouncer.setLastInteraction(player, result);
 
-        return result ? InteractionResult.SUCCESS : InteractionResult.PASS;
+        return result ? FabricAdapter.IR_SUCCESS : FabricAdapter.IR_PASS;
     }
 
     public void onLeftClickAir(ServerPlayer playerEntity, InteractionHand hand) {
@@ -399,31 +437,20 @@ public class FabricWorldEdit implements ModInitializer {
         debouncer.setLastInteraction(player, result);
     }
 
-    private InteractionResultHolder<ItemStack> onRightClickAir(Player playerEntity, Level world, InteractionHand hand) {
-        ItemStack stackInHand = playerEntity.getItemInHand(hand);
-        if (skipInteractionEvent(playerEntity, hand)) {
-            return InteractionResultHolder.pass(stackInHand);
-        }
-
-        WorldEdit we = WorldEdit.getInstance();
-        FabricPlayer player = adaptPlayer((ServerPlayer) playerEntity);
-
-        Optional<Boolean> previousResult = debouncer.getDuplicateInteractionResult(player);
-        if (previousResult.isPresent()) {
-            return previousResult.get() ? InteractionResultHolder.success(stackInHand) : InteractionResultHolder.pass(stackInHand);
-        }
-
-        boolean result = we.handleRightClick(player);
-        debouncer.setLastInteraction(player, result);
-
-        return result ? InteractionResultHolder.success(stackInHand) : InteractionResultHolder.pass(stackInHand);
-    }
+    // onRightClickAir() was removed along with its UseItemCallback registration above.
+    // The signature used InteractionResultHolder<ItemStack> (gone in 1.21.11), and keeping
+    // any method that references that class would prevent FabricWorldEdit from loading.
 
     private void onPlayerDisconnect(ServerGamePacketListenerImpl handler, MinecraftServer server) {
         debouncer.clearInteraction(adaptPlayer(handler.player));
 
         WorldEdit.getInstance().getEventBus()
             .post(new SessionIdleEvent(new FabricPlayer.SessionKeyImpl(handler.player)));
+
+        // Release the cached FabricPlayer so we don't leak it. The cached actor holds a
+        // strong reference to the ServerPlayer (which is now disconnected); without this,
+        // each rejoin grows the cache without ever shrinking.
+        FabricAdapter.invalidatePlayer(handler.player.getUUID());
     }
 
     /**

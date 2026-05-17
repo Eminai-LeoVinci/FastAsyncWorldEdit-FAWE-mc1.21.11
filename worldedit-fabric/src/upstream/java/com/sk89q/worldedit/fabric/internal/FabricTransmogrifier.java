@@ -44,14 +44,16 @@ import java.util.stream.Collectors;
  */
 public class FabricTransmogrifier {
     public static Property<?> transmogToWorldEditProperty(net.minecraft.world.level.block.state.properties.Property<?> property) {
+        // Property.getPossibleValues() return type changed Collection -> List between
+        // 1.21.1 and 1.21.11. Use FabricAdapter.getPropertyPossibleValues for resilience.
         return switch (property) {
             case net.minecraft.world.level.block.state.properties.BooleanProperty booleanProperty ->
-                new BooleanProperty(property.getName(), new ArrayList<>(booleanProperty.getPossibleValues()));
+                new BooleanProperty(property.getName(), new ArrayList<>(FabricAdapter.getPropertyPossibleValues(booleanProperty)));
             case net.minecraft.world.level.block.state.properties.IntegerProperty integerProperty ->
-                new IntegerProperty(property.getName(), new ArrayList<>(integerProperty.getPossibleValues()));
+                new IntegerProperty(property.getName(), new ArrayList<>(FabricAdapter.getPropertyPossibleValues(integerProperty)));
             case net.minecraft.world.level.block.state.properties.EnumProperty<?> enumProperty -> {
                 if (property.getValueClass() == net.minecraft.core.Direction.class) {
-                    List<Direction> values = property.getPossibleValues().stream()
+                    List<Direction> values = FabricAdapter.getPropertyPossibleValues(property).stream()
                         .map(v -> FabricAdapter.adaptEnumFacing((net.minecraft.core.Direction) v))
                         .collect(Collectors.toCollection(ArrayList::new));
                     yield new DirectionalProperty(property.getName(), values);
@@ -59,8 +61,8 @@ public class FabricTransmogrifier {
                 // Note: do not make x.asString a method reference.
                 // It will cause runtime bootstrap exceptions.
                 //noinspection Convert2MethodRef
-                List<String> values = enumProperty.getPossibleValues().stream()
-                    .map(x -> x.getSerializedName())
+                List<String> values = FabricAdapter.getPropertyPossibleValues(enumProperty).stream()
+                    .map(x -> ((StringRepresentable) x).getSerializedName())
                     .collect(Collectors.toCollection(ArrayList::new));
                 yield new EnumProperty(property.getName(), values);
             }
