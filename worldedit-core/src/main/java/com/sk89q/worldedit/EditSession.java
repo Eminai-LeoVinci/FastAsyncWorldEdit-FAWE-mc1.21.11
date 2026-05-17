@@ -288,52 +288,6 @@ public class EditSession extends PassthroughExtent implements AutoCloseable {
         return expectedBlockChanges;
     }
 
-    // Resume-tracking: per-EditSession set of chunk (x,z) coords that have had at least
-    // one block written. Used by the paste-resume system to know what to skip on retry
-    // after a crash. The field is null when tracking is disabled (zero overhead for
-    // edits that don't opt in), and a ConcurrentHashMap-backed set when enabled.
-    // Key format: (long) chunkX << 32 | (chunkZ & 0xFFFFFFFFL).
-    private volatile java.util.Set<Long> resumeChunks;
-
-    public void enableResumeChunkTracking() {
-        this.resumeChunks = java.util.concurrent.ConcurrentHashMap.newKeySet();
-    }
-
-    @Nullable
-    public java.util.Set<Long> getResumeChunks() {
-        return resumeChunks;
-    }
-
-    public static long packChunkKey(int chunkX, int chunkZ) {
-        return ((long) chunkX << 32) | ((long) chunkZ & 0xFFFFFFFFL);
-    }
-
-    public static int unpackChunkX(long key) {
-        return (int) (key >> 32);
-    }
-
-    public static int unpackChunkZ(long key) {
-        return (int) key;
-    }
-
-    /**
-     * Internal hook - called from the {@code setBlock} variants right after {@code changes++}.
-     * No-op when resume tracking is disabled (the common case).
-     */
-    private void recordResumeChunkXZ(int blockX, int blockZ) {
-        java.util.Set<Long> rc = this.resumeChunks;
-        if (rc != null) {
-            rc.add(packChunkKey(blockX >> 4, blockZ >> 4));
-        }
-    }
-
-    private void recordResumeChunk(BlockVector3 pos) {
-        java.util.Set<Long> rc = this.resumeChunks;
-        if (rc != null) {
-            rc.add(packChunkKey(pos.getBlockX() >> 4, pos.getBlockZ() >> 4));
-        }
-    }
-
     /**
      * External progress-bump for operations that don't go through this EditSession's
      * {@code setBlock} but still want their work visible to /fawestatus and friends.
@@ -1081,7 +1035,6 @@ public class EditSession extends PassthroughExtent implements AutoCloseable {
         }
 
         this.changes++;
-        recordResumeChunk(position);
         switch (stage) {
             case BEFORE_HISTORY:
                 return this.getExtent().setBlock(position, block);
@@ -1112,7 +1065,6 @@ public class EditSession extends PassthroughExtent implements AutoCloseable {
         }
 
         this.changes++;
-        recordResumeChunk(position);
         try {
             return bypassAll.setBlock(position, block);
         } catch (WorldEditException e) {
@@ -1136,7 +1088,6 @@ public class EditSession extends PassthroughExtent implements AutoCloseable {
         }
 
         this.changes++;
-        recordResumeChunk(position);
         try {
             return setBlock(position, block, Stage.BEFORE_REORDER);
         } catch (WorldEditException e) {
@@ -1152,7 +1103,6 @@ public class EditSession extends PassthroughExtent implements AutoCloseable {
         }
 
         this.changes++;
-        recordResumeChunk(position);
         try {
             return this.getExtent().setBlock(position, block);
         } catch (MaxChangedBlocksException e) {
@@ -1170,7 +1120,6 @@ public class EditSession extends PassthroughExtent implements AutoCloseable {
         }
 
         this.changes++;
-        recordResumeChunkXZ(x, z);
         try {
             return this.getExtent().setBlock(x, y, z, block);
         } catch (WorldEditException e) {
@@ -1194,7 +1143,6 @@ public class EditSession extends PassthroughExtent implements AutoCloseable {
         }
 
         this.changes++;
-        recordResumeChunkXZ(x, z);
         try {
             BlockVector3 bv = mutableBlockVector3.setComponents(x, y, z);
             return pattern.apply(getExtent(), bv, bv);
@@ -1217,7 +1165,6 @@ public class EditSession extends PassthroughExtent implements AutoCloseable {
         }
 
         this.changes++;
-        recordResumeChunk(position);
         try {
             return pattern.apply(this.getExtent(), position, position);
         } catch (WorldEditException e) {

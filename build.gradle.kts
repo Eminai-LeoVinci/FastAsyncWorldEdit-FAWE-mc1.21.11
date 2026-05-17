@@ -19,7 +19,18 @@ var buildNumber by extra("")
 var date: String by extra("")
 ext {
     val git: Grgit = Grgit.open {
-        dir = File("$rootDir/.git")
+        // Normal checkout: .git is a directory - use it directly.
+        // Worktree: .git is a file pointing at .git/worktrees/<name>. Grgit/JGit
+        // doesn't open worktree-specific gitdirs cleanly, so walk up to the main
+        // .git instead (two parents up). The resulting commit hash reflects the
+        // main checkout's HEAD, which is acceptable for a version stamp.
+        val gitFile = File("$rootDir/.git")
+        dir = if (gitFile.isFile) {
+            val worktreeGitdir = File(gitFile.readText().trim().substringAfter("gitdir:").trim())
+            worktreeGitdir.parentFile.parentFile
+        } else {
+            gitFile
+        }
     }
     date = git.head().dateTime.format(DateTimeFormatter.ofPattern("yy.MM.dd"))
     revision = "-${git.head().abbreviatedId}"
