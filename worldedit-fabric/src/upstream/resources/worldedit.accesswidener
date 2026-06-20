@@ -13,3 +13,6 @@ accessible field net/minecraft/world/level/storage/PrimaryLevelData worldOptions
 mutable field net/minecraft/world/level/storage/PrimaryLevelData worldOptions Lnet/minecraft/world/level/levelgen/WorldOptions;
 
 accessible method net/minecraft/network/protocol/game/ClientboundBlockEntityDataPacket <init> (Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/block/entity/BlockEntityType;Lnet/minecraft/nbt/CompoundTag;)V
+
+# Native FAWE chunk queue (FabricChunkSender) — resend a chunk to its tracking players.
+accessible method net/minecraft/server/level/ChunkMap getPlayers (Lnet/minecraft/world/level/ChunkPos;Z)Ljava/util/List;

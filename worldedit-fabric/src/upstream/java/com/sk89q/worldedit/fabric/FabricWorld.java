@@ -23,6 +23,7 @@ import com.fastasyncworldedit.core.nbt.FaweCompoundTag;
 import com.fastasyncworldedit.core.queue.IChunkGet;
 import com.fastasyncworldedit.core.queue.implementation.blocks.NullChunkGet;
 import com.fastasyncworldedit.core.queue.implementation.packet.ChunkPacket;
+import com.fastasyncworldedit.fabric.FabricGetBlocks;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
@@ -699,6 +700,9 @@ public class FabricWorld extends AbstractWorld {
 
     @Override
     public IChunkGet get(int chunkX, int chunkZ) {
+        if (FabricWorldEdit.isNativeQueueEnabled() && getWorld() instanceof ServerLevel serverLevel) {
+            return new FabricGetBlocks(serverLevel, chunkX, chunkZ, getMinY(), getMaxY());
+        }
         return NullChunkGet.getInstance();
     }
 
