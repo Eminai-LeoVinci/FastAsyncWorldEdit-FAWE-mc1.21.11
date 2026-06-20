@@ -637,6 +637,11 @@ public class LocalSession implements TextureHolder {
         if (world == null) {
             return false;
         }
+        // When the native Fabric chunk queue is enabled, do NOT force the legacy WorldNativeAccess path —
+        // edits flow through FAWE's IQueueExtent / FabricGetBlocks instead.
+        if (Boolean.getBoolean("fawe.fabric.nativeQueue")) {
+            return false;
+        }
         World unwrapped = WorldWrapper.unwrap(world);
         String worldClass = world.getClass().getName();
         String unwrappedClass = unwrapped.getClass().getName();

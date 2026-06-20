@@ -8,7 +8,7 @@ An **unofficial** Fabric build of FastAsyncWorldEdit, ported to Minecraft 1.21.1
 
 ## What this fork is
 
-Branch `fabric-1.21.1` in this repo is built from:
+Branch `fawe-fabric-1.21.11` in this repo is built from:
 
 - **sk89q WorldEdit** — the original world-editing library
 - **[IntellectualSites / FastAsyncWorldEdit](https://github.com/IntellectualSites/FastAsyncWorldEdit)** — the FAWE rewrite (Bukkit/Paper focus)
@@ -17,7 +17,7 @@ Branch `fabric-1.21.1` in this repo is built from:
 
 The Fabric module targets the Minecraft 1.21.11 runtime while staying on the 1.21.1 Yarn-mapped source tree. API drift between 1.21.1 and 1.21.11 is handled with reflective fallbacks inside `FabricAdapter` and friends, so the same source compiles against either runtime.
 
-A second branch (`fabric-1.21.11`, parked) was an earlier attempt at retargeting the whole source tree at 1.21.11 mappings; it is kept for reference only — all active work happens on `fabric-1.21.1`.
+A second branch (`fabric-1.21.11`, parked) was an earlier attempt at retargeting the whole source tree at 1.21.11 mappings; it is kept for reference only — all active work happens on `fawe-fabric-1.21.11`.
 
 ---
 
@@ -46,6 +46,17 @@ While a `//paste` runs, completed chunks are tracked in a per-player JSON file u
 On clean completion the state file is deleted automatically.
 
 Source: `worldedit-core/src/main/java/com/fastasyncworldedit/core/paste/`
+
+### Native chunk queue (experimental, opt-in)
+A real FAWE fast-placement path for Fabric. Block data is staged off-thread, then all live-world changes
+(section blocks, light, heightmaps, tile entities) and a single per-chunk client resend run on the server
+thread — so it never trips C2ME/Lithium's async-chunk-modification guard. This removes the silent
+dropped-block bug and the pause/unpause slowdown of the legacy per-block path; large pastes run several
+times faster (measured ~1.2k → ~75k blocks/s unpaused).
+
+Enable with the JVM flag `-Dfawe.fabric.nativeQueue=true` (default off — an un-flagged build behaves
+exactly as before). See [`NATIVE_QUEUE.md`](NATIVE_QUEUE.md) for the design, test checklist, and current
+v1 limitations (blocks/tiles/light are handled; biome and entity restoration via this path are not yet).
 
 ### 1.21.11 compatibility shims
 - `BlockEntity.loadWithComponents` was removed in 1.21.11 — `FabricAdapter.loadBlockEntityNbt` walks the BE class hierarchy and calls `loadCustomOnly` / `loadAdditional` as appropriate.

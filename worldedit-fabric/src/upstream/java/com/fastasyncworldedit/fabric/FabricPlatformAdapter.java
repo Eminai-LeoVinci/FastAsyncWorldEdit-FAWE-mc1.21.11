@@ -7,6 +7,8 @@ public class FabricPlatformAdapter implements FAWEPlatformAdapterImpl {
 
     @Override
     public void sendChunk(IChunkGet chunk, int mask, boolean lighting) {
-        // TODO: Fabric chunk packet support not implemented yet.
+        if (chunk instanceof FabricGetBlocks fabricGet) {
+            fabricGet.send();
+        }
     }
 }

@@ -330,6 +330,11 @@ public class FabricWorldEdit implements ModInitializer {
 
     private void onStartServer(MinecraftServer minecraftServer) {
         initFawe();
+        // SERVER_STARTED fires on the server thread; bind FAWE's "main thread" to it so QueueHandler
+        // sync/run routing is correct (QueueHandler.run() throws if not on the FAWE main thread).
+        if (Fawe.instance() != null) {
+            Fawe.instance().setMainThread();
+        }
         setupRegistries(minecraftServer);
 
         config.load();
@@ -357,7 +362,7 @@ public class FabricWorldEdit implements ModInitializer {
             // Disable fast placement and database-backed history to keep commands functional.
             Settings settings = Settings.settings();
             Settings.LIMITS defaultLimit = settings.LIMITS.get("default");
-            if (defaultLimit != null) {
+            if (defaultLimit != null && !isNativeQueueEnabled()) {
                 defaultLimit.FAST_PLACEMENT = false;
             }
             settings.HISTORY.USE_DATABASE = false;
@@ -365,6 +370,15 @@ public class FabricWorldEdit implements ModInitializer {
         } catch (Exception e) {
             LOGGER.error("Failed to initialize FAWE for Fabric", e);
         }
+    }
+
+    /**
+     * Whether the experimental native FAWE chunk queue ({@code FabricGetBlocks}) is enabled. Enable with
+     * the JVM flag {@code -Dfawe.fabric.nativeQueue=true}. Default false (legacy WorldNativeAccess path),
+     * so an un-flagged build behaves exactly as before.
+     */
+    public static boolean isNativeQueueEnabled() {
+        return Boolean.getBoolean("fawe.fabric.nativeQueue");
     }
 
     private boolean skipEvents() {
